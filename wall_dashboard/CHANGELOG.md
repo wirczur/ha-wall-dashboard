@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+- Telewizory Samsung: uruchamianie aplikacji działa na nowszych modelach – add-on próbuje kolejno REST, DEEP_LINK i NATIVE_LAUNCH i sprawdza w telewizorze, czy aplikacja wystartowała. Gdy żaden sposób nie zadziała, panel pokazuje komunikat.
+- Wykrywanie aplikacji: także Apple Music, Deezer i inne wersje Disney+.
+
 ## 1.0.0
 Pierwsze publiczne wydanie.
 - Dashboardy na tablety ścienne: kiosk (link z kluczem per tablet) i edytor w panelu HA (widoki, siatka, motywy, wizualny edytor, JSON).

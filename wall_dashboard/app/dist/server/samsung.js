@@ -114,8 +114,71 @@ export class SamsungTv {
             return this.emit(p('Click'));
         return this.emit(p('Press')).then(() => new Promise((r) => setTimeout(r, 1200))).then(() => this.emit(p('Release')));
     }
-    launch(appId, type) {
-        return this.emit({ method: 'ms.channel.emit', params: { event: 'ed.apps.launch', to: 'host', data: { appId, action_type: type === 2 ? 'DEEP_LINK' : 'NATIVE_LAUNCH' } } });
+    /**
+     * Starts an app. Models differ: older ones accept REST POST /api/v2/applications/<id>, newer ones only the
+     * WebSocket "ed.apps.launch" – with DEEP_LINK (most apps, the default of Samsung's own tools) or NATIVE_LAUNCH.
+     * Each way is tried in turn until the TV reports the app as running.
+     */
+    async launch(appId, type) {
+        const ws = (action) => () => this.emit({ method: 'ms.channel.emit', params: { event: 'ed.apps.launch', to: 'host', data: { appId, action_type: action, metaTag: '' } } }).then(() => true);
+        // app_type from the TV's own list: 2 = deep link, 4 = native; unknown (manual / discovered) → deep link first
+        const order = type === 4 ? [ws('NATIVE_LAUNCH'), ws('DEEP_LINK')] : [ws('DEEP_LINK'), ws('NATIVE_LAUNCH')];
+        const tries = [() => this.restLaunch(appId), ...order];
+        let canCheck = true;
+        for (const t of tries) {
+            const sent = await t().catch(() => false);
+            if (!sent)
+                continue;
+            if (!canCheck)
+                return;
+            const st = await this.appRunning(appId, 3500);
+            if (st === true)
+                return;
+            if (st === null)
+                canCheck = false; // the TV does not report app state – keep the first way that was accepted
+            if (!canCheck)
+                return;
+        }
+        log.warn(`Telewizor ${this.def.name}: aplikacja ${appId} nie wystartowała żadnym ze sposobów`);
+        throw new Error('Telewizor nie uruchomił aplikacji – sprawdź ID aplikacji (Telewizory → Dodaj skrót ręcznie)');
+    }
+    /** REST launch (older Tizen); true = accepted */
+    restLaunch(appId) {
+        return new Promise((resolve) => {
+            const req = http.request({ host: this.def.host, port: 8001, method: 'POST', path: '/api/v2/applications/' + encodeURIComponent(appId), timeout: 2500 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+            req.on('error', () => resolve(false));
+            req.end();
+        });
+    }
+    /** polls GET /api/v2/applications/<id> until "running"; null = this TV does not answer that query */
+    async appRunning(appId, within) {
+        const end = Date.now() + within;
+        let answered = false;
+        while (Date.now() < end) {
+            await new Promise((r) => setTimeout(r, 700));
+            const st = await new Promise((resolve) => {
+                const req = http.get({ host: this.def.host, port: 8001, path: '/api/v2/applications/' + encodeURIComponent(appId), timeout: 1500 }, (res) => {
+                    let body = '';
+                    res.on('data', (c) => (body += c));
+                    res.on('end', () => { if (res.statusCode !== 200)
+                        return resolve(null); try {
+                        resolve(JSON.parse(body));
+                    }
+                    catch {
+                        resolve(null);
+                    } });
+                });
+                req.on('timeout', () => { req.destroy(); resolve(null); });
+                req.on('error', () => resolve(null));
+            });
+            if (st) {
+                answered = true;
+                if (st.running || st.visible)
+                    return true;
+            }
+        }
+        return answered ? false : null;
     }
     async installedApps() {
         const p = new Promise((resolve, reject) => {

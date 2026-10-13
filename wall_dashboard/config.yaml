@@ -1,5 +1,5 @@
 name: Wall Dashboard
-version: "1.0.0"
+version: "1.0.1"
 slug: wall_dashboard
 url: https://github.com/wirczur/ha-wall-dashboard
 description: Dashboardy na tablety ścienne — tryb kiosk dla tabletów i edytor w panelu Home Assistant
