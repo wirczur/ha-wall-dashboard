@@ -1,0 +1,35 @@
+name: Wall Dashboard
+version: "1.0.0"
+slug: wall_dashboard
+url: https://github.com/wirczur/ha-wall-dashboard
+description: Dashboardy na tablety ścienne — tryb kiosk dla tabletów i edytor w panelu Home Assistant
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: application
+boot: auto
+homeassistant_api: true
+host_network: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:view-dashboard-variant
+panel_title: Wall Dashboard
+panel_admin: true
+ports:
+  8100/tcp: 8100
+ports_description:
+  8100/tcp: Kiosk — adres dla tabletów (tylko podgląd i sterowanie)
+map:
+  - ssl
+options:
+  log_level: info
+  ssl: false
+  certfile: fullchain.pem
+  keyfile: privkey.pem
+schema:
+  log_level: list(debug|info|warning|error)
+  ssl: bool
+  certfile: str
+  keyfile: str

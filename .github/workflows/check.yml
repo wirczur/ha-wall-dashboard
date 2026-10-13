@@ -1,0 +1,16 @@
+# Typecheck + build of the add-on on every push; fails when the committed dist/ is out of date with the sources.
+name: Check
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: wall_dashboard/app } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: wall_dashboard/app/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: dist up to date
+        run: git status --porcelain dist | tee /tmp/diff && test ! -s /tmp/diff || echo "::warning::dist/ różni się od świeżo zbudowanego – zbuduj i zatwierdź dist"

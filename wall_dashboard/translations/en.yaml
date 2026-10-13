@@ -1,0 +1,15 @@
+configuration:
+  log_level:
+    name: Poziom logowania
+    description: Ile szczegółów zapisywać w logu add-onu.
+  ssl:
+    name: HTTPS dla kiosku
+    description: Kiosk (port 8100) po HTTPS — wymagane, by tablet mógł użyć mikrofonu (rozmowa przez furtkę).
+  certfile:
+    name: Certyfikat
+    description: Plik certyfikatu w folderze /ssl (np. fullchain.pem).
+  keyfile:
+    name: Klucz prywatny
+    description: Plik klucza w folderze /ssl (np. privkey.pem).
+network:
+  8100/tcp: Kiosk — adres dla tabletów (tylko podgląd i sterowanie)

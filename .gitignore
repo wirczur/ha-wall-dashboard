@@ -1,0 +1,3 @@
+node_modules/
+wall_dashboard/app/data/
+*.log
