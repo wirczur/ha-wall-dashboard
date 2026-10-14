@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+- Przewijanie list (AGD, historia dzwonków, panel boczny) na dużych ekranach: przeciąganie myszą / rysikiem / ramką dotykową USB (zgłaszają się jak mysz) przewija listę jak palcem; puszczenie po przeciągnięciu nie jest kliknięciem.
+- Starsze WebView: gdy palec przesuwa listę, a przeglądarka jej nie przewija, panel przewija ją sam.
+
 ## 1.0.7
 - Poczekalnia (IVR) jako zamiennik dzwonka: add-on sam odbiera domofon, gra powitanie i muzykę, a gdy przez ustawiony czas (domyślnie 60 s od dzwonka) nikt nie odbierze na panelu ani telefonie – mówi pożegnanie, zamyka pop-upy i rozłącza domofon (nowe pole „Rozłącz domofon” + „Rozłącz, gdy nikt nie odbierze, po (s)”).
 - „Odrzuć” na panelu rozłącza domofon, gdy połączenie odebrała poczekalnia. Gdy odwiedzający sam się rozłączy (stan „zamknij przy”), poczekalnia kończy się bez pożegnania.
