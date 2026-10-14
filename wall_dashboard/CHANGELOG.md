@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+- Poczekalnia (IVR) jako zamiennik dzwonka: add-on sam odbiera domofon, gra powitanie i muzykę, a gdy przez ustawiony czas (domyślnie 60 s od dzwonka) nikt nie odbierze na panelu ani telefonie – mówi pożegnanie, zamyka pop-upy i rozłącza domofon (nowe pole „Rozłącz domofon” + „Rozłącz, gdy nikt nie odbierze, po (s)”).
+- „Odrzuć” na panelu rozłącza domofon, gdy połączenie odebrała poczekalnia. Gdy odwiedzający sam się rozłączy (stan „zamknij przy”), poczekalnia kończy się bez pożegnania.
+- Pop-up na panelach czeka tyle, ile poczekalnia.
+
 ## 1.0.6
 - Poczekalnia (IVR): przycisk odsłuchu przy dźwięku (powitanie, muzyka) gra z ustawioną głośnością.
 - Poczekalnia: start bez opóźnienia przy „po 0 s” – mowa z HA i ściszony dźwięk są przygotowywane z góry (po zapisaniu reguł i po starcie add-onu), a adres mowy z HA jest pamiętany. Po naciśnięciu „odbierz” add-on czeka 1 s, aż domofon otworzy kanał audio, i sprawdza, czy dzwonek nadal trwa.

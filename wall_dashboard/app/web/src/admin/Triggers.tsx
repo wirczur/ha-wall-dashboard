@@ -232,9 +232,12 @@ const IvrEditor: FC<{ t: TriggerDef; onChange(p: Partial<TriggerDef>): void }> =
   return (
     <fieldset className="field">
       <legend>Poczekalnia dla odwiedzającego (IVR)</legend>
-      <CheckF label="Gdy nikt nie odbiera – odbierz w domofonie i graj powitanie + muzykę" value={!!iv} onChange={(v) => onChange({ ivr: v ? { after: 8, greetingText: 'Dzień dobry, proszę chwilę poczekać, łączę z domownikami.', music: 'sounds/poczekalnia.wav' } : undefined })} />
+      <CheckF label="Poczekalnia: add-on sam odbiera domofon, gra powitanie + muzykę zamiast dzwonka, a gdy nikt nie odbierze – rozłącza" value={!!iv} onChange={(v) => onChange({ ivr: v ? { after: 0, hangupAfter: 60, greetingText: 'Dzień dobry, proszę chwilę poczekać, łączę z domownikami.', music: 'sounds/poczekalnia.wav' } : undefined })} />
       {iv && <>
-        <NumF label="Zacznij po (s dzwonienia)" value={iv.after ?? 8} min={0} max={120} onChange={(v) => set({ after: v })} hint="0 = od razu" />
+        <div className="ins-grid2">
+          <NumF label="Zacznij po (s dzwonienia)" value={iv.after ?? 8} min={0} max={120} onChange={(v) => set({ after: v })} hint="0 = od razu, zamiast dzwonka" />
+          <NumF label="Rozłącz, gdy nikt nie odbierze, po (s)" value={iv.hangupAfter ?? t.popup?.timeout ?? 60} min={10} max={600} step={5} onChange={(v) => set({ hangupAfter: v })} hint="liczone od dzwonka; tyle też pop-up czeka na panelach" />
+        </div>
         <TextF label="Powitanie (mowa z HA)" value={iv.greetingText} onChange={(v) => set({ greetingText: v })} placeholder="Dzień dobry, proszę chwilę poczekać…" />
         {!iv.greetingText && <SoundSelect label="…albo plik powitania" value={iv.greeting} volume={iv.volume ?? 100} onChange={(v) => set({ greeting: v })} />}
         <SoundSelect label="Muzyka oczekiwania (w pętli)" value={iv.music} volume={iv.musicVolume ?? 100} none="— bez muzyki —" onChange={(v) => set({ music: v })} />
@@ -247,7 +250,10 @@ const IvrEditor: FC<{ t: TriggerDef; onChange(p: Partial<TriggerDef>): void }> =
           <TextF label="Strumień go2rtc domofonu" value={iv.stream} onChange={(v) => set({ stream: v })} placeholder={t.popup?.go2rtc?.stream || 'np. furtka'} />
           <SelectF label="Kodek audio" value={iv.codec ?? 'pcmu'} onChange={(v) => set({ codec: v as 'pcmu' })} options={[['pcmu', 'PCMU / G.711µ (Hikvision)'], ['pcma', 'PCMA / G.711a'], ['opus', 'Opus'], ['aac', 'AAC']]} />
         </div>
-        <EntityF label="Odbierz połączenie w domofonie (opcjonalnie)" value={iv.answerEntity} domains={['button', 'script', 'switch', 'input_button']} onChange={(v) => set({ answerEntity: v })} hint="np. przycisk „Odbierz” z integracji domofonu albo skrypt wywołujący ISAPI – naciskany, gdy startuje poczekalnia" />
+        <div className="ins-grid2">
+          <EntityF label="Odbierz w domofonie" value={iv.answerEntity} domains={['button', 'script', 'switch', 'input_button']} onChange={(v) => set({ answerEntity: v })} hint="skrypt / przycisk naciskany na start poczekalni (Hikvision: ISAPI callSignal „answer”)" />
+          <EntityF label="Rozłącz domofon" value={iv.hangupEntity} domains={['button', 'script', 'switch', 'input_button']} onChange={(v) => set({ hangupEntity: v })} hint="naciskany po pożegnaniu, gdy nikt nie odebrał, i po „Odrzuć” na panelu (Hikvision: „hangUp”)" />
+        </div>
         <label className="field"><span>Silnik mowy (TTS)</span>
           <select value={iv.tts ?? ''} onChange={(e) => set({ tts: e.target.value || undefined })}>
             <option value="">automatycznie (polski silnik, jeśli jest)</option>
@@ -263,7 +269,7 @@ const IvrEditor: FC<{ t: TriggerDef; onChange(p: Partial<TriggerDef>): void }> =
           <button className="btn" disabled={!stream} onClick={() => test(undefined, true)}>■ Stop</button>
         </div>
         {msg && <p className="muted small">{msg}</p>}
-        <p className="muted small">Dźwięk wysyła go2rtc do głośnika domofonu (ta sama droga co rozmowa z tabletu). Poczekalnia milknie, gdy ktoś na panelu wciśnie mikrofon („Rozmowa”), „Otwórz” albo „Odrzuć”.</p>
+        <p className="muted small">Dźwięk wysyła go2rtc do głośnika domofonu (ta sama droga co rozmowa z tabletu). Poczekalnia milknie, gdy ktoś na panelu lub telefonie (aplikacja / PWA) wciśnie mikrofon („Rozmowa”) albo „Otwórz”; „Odrzuć” rozłącza domofon. Gdy add-on odebrał, stacja wewnętrzna i Hik-Connect już nie przejmą połączenia – odbieraj z paneli.</p>
       </>}
     </fieldset>
   );

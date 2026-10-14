@@ -19,7 +19,7 @@ import { importHouse, validateHouse } from './houses.js';
 import { TvRegistry } from './samsung.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -1136,7 +1136,7 @@ function fireTrigger(t, test = false) {
     if (t.action === 'wake')
         return sendWake(t.tablets ?? [], t.wake ?? {});
     log.info(`Wyzwalacz „${t.name}”${test ? ' (test)' : ''}`);
-    const n = sendPopup({ timeout: 60, ...(t.popup ?? {}), id: trgId(t), tablets: t.tablets ?? [], wake: t.wake ?? { screen: true } });
+    const n = sendPopup({ timeout: 60, ...(t.popup ?? {}), ...(t.ivr?.hangupAfter ? { timeout: t.ivr.hangupAfter } : {}), id: trgId(t), tablets: t.tablets ?? [], wake: t.wake ?? { screen: true } });
     if (!test || t.ivr)
         callStart(t, test);
     return n;
@@ -1283,7 +1283,7 @@ function callStart(t, test) {
         activeCalls.delete(id);
     }
     const rec = { id: newId(), trigger: t.id, name: t.name, at: Date.now(), status: 'ringing' };
-    const timeout = (t.popup?.timeout ?? 60) || 600;
+    const timeout = (t.ivr?.hangupAfter ?? t.popup?.timeout ?? 60) || 600;
     const a = { rec, t, test, timer: setTimeout(() => callEnd(id), timeout * 1000) };
     activeCalls.set(id, a);
     if (!test && t.log !== false) {
@@ -1305,10 +1305,16 @@ function callEvent(popupId, ev, by) {
             callSave(a.rec);
         log.info(`Dzwonek „${a.t.name}”: ${a.rec.status}${by ? ' (' + by + ')' : ''}`);
     }
-    if (ev === 'reject')
+    if (ev === 'reject') {
+        if (a.rec.ivr && a.t.ivr?.hangupEntity) {
+            log.info(`IVR „${a.t.name}”: odrzucono na panelu – rozłączam domofon`);
+            void pressEntity(a.t.ivr.hangupEntity, 'IVR rozłącz');
+        }
         callEnd(popupId);
+    }
 }
-function callEnd(popupId) {
+/** gone = the visitor hung up / the intercom went idle (closeOn) – no goodbye, nothing to hang up */
+function callEnd(popupId, gone = false) {
     const a = activeCalls.get(popupId);
     if (!a)
         return;
@@ -1316,9 +1322,10 @@ function callEnd(popupId) {
     activeCalls.delete(popupId);
     const missed = a.rec.status === 'ringing';
     const bye = a.t.ivr?.goodbye || (a.t.ivr?.goodbyeText ? 'tts:' + a.t.ivr.goodbyeText : '');
-    if (missed && a.ivr && bye) {
-        clearTimeout(a.ivr.timer);
-        void ivrPlay(a, bye);
+    if (missed && a.rec.ivr && !gone) {
+        // nobody answered: goodbye, then hang up the intercom and close the pop-up on the panels
+        sendPopup({ id: popupId, action: 'close', tablets: a.t.tablets ?? [] });
+        void ivrFinish(a, bye);
     }
     else
         ivrStop(a);
@@ -1532,6 +1539,32 @@ async function ivrPlay(a, src, music = false) {
         log.warn('IVR ' + err);
     return err;
 }
+/** presses a button / runs a script / turns on a switch in HA */
+async function pressEntity(entity, what) {
+    if (!ha)
+        return;
+    const d = entity.split('.')[0];
+    const press = d === 'button' || d === 'input_button';
+    await ha.callService(press ? d : d === 'script' ? 'script' : d, press ? 'press' : 'turn_on', {}, { entity_id: entity }).catch((e) => log.warn(`${what}: ${e.message}`));
+}
+/** end of an unanswered waiting room: goodbye (if set), silence, hang up */
+async function ivrFinish(a, bye) {
+    const iv = a.t.ivr;
+    if (a.ivr)
+        clearTimeout(a.ivr.timer);
+    if (bye) {
+        const err = await ivrPlay(a, bye);
+        const len = err ? 0 : bye.startsWith('tts:') ? ttsSeconds(bye.slice(4)) : audioLength(bye) ?? 4;
+        await new Promise((r) => setTimeout(r, (len + 0.8) * 1000));
+    }
+    ivrStop(a);
+    if (iv.hangupEntity) {
+        log.info(`IVR „${a.t.name}”: nikt nie odebrał – rozłączam domofon`);
+        await pressEntity(iv.hangupEntity, 'IVR rozłącz');
+    }
+    else
+        log.info(`IVR „${a.t.name}”: nikt nie odebrał – koniec poczekalni (brak encji „rozłącz”)`);
+}
 /** prepares speech and louder / quieter files in advance, so the waiting room starts without delay */
 async function ivrWarm(t) {
     const iv = t.ivr;
@@ -1578,8 +1611,7 @@ function ivrSchedule(a) {
             log.info(`IVR „${a.t.name}”: odbieram i gram poczekalnię`);
             a.rec.ivr = true;
             if (iv.answerEntity && ha) {
-                const d = iv.answerEntity.split('.')[0];
-                await ha.callService(d === 'button' || d === 'input_button' ? d : d === 'switch' ? 'switch' : d, d === 'button' || d === 'input_button' ? 'press' : 'turn_on', {}, { entity_id: iv.answerEntity }).catch((e) => log.warn('IVR odbierz: ' + e.message));
+                await pressEntity(iv.answerEntity, 'IVR odbierz');
                 // the intercom needs a moment to open its speaker after answering – otherwise the start of the greeting is lost
                 await new Promise((r) => setTimeout(r, 1000));
                 if (activeCalls.get(trgId(a.t)) !== a || a.rec.status !== 'ringing')
@@ -1692,7 +1724,7 @@ function checkTriggers(entity_id, state) {
             continue;
         if (t.closeOn && cur === t.closeOn) {
             sendPopup({ id: trgId(t), action: 'close', tablets: t.tablets ?? [] });
-            callEnd(trgId(t));
+            callEnd(trgId(t), true);
             continue;
         }
         if (t.to && cur !== t.to)
@@ -1725,7 +1757,9 @@ function cleanTrigger(x) {
             codec: ['pcmu', 'pcma', 'opus', 'aac'].includes(x.ivr.codec) ? x.ivr.codec : undefined,
             volume: isFinite(x.ivr.volume) && x.ivr.volume !== null ? Math.max(0, Math.min(300, Number(x.ivr.volume))) : undefined,
             musicVolume: isFinite(x.ivr.musicVolume) && x.ivr.musicVolume !== null ? Math.max(0, Math.min(300, Number(x.ivr.musicVolume))) : undefined,
-            answerEntity: ENTITY_RE.test(String(x.ivr.answerEntity ?? '')) ? String(x.ivr.answerEntity) : undefined, base: str(x.ivr.base, 200)
+            answerEntity: ENTITY_RE.test(String(x.ivr.answerEntity ?? '')) ? String(x.ivr.answerEntity) : undefined,
+            hangupEntity: ENTITY_RE.test(String(x.ivr.hangupEntity ?? '')) ? String(x.ivr.hangupEntity) : undefined,
+            hangupAfter: isFinite(x.ivr.hangupAfter) && x.ivr.hangupAfter ? Math.max(10, Math.min(600, Number(x.ivr.hangupAfter))) : undefined, base: str(x.ivr.base, 200)
         } : undefined
     };
 }

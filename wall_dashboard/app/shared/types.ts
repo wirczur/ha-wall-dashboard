@@ -425,6 +425,10 @@ export interface IvrDef {
   codec?: 'pcmu' | 'pcma' | 'opus' | 'aac';
   /** entity that answers the call on the intercom (button / script / switch), pressed when the IVR starts */
   answerEntity?: string;
+  /** entity that ends the call on the intercom, pressed when nobody answered (after the goodbye) or a panel rejected */
+  hangupEntity?: string;
+  /** seconds from the first ring after which the add-on gives up and hangs up (default: the pop-up's "close after") */
+  hangupAfter?: number;
   /** add-on address as seen from go2rtc, for fetching the sound files (default http://127.0.0.1:8099) */
   base?: string;
 }
