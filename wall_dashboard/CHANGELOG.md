@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.5
+- Poczekalnia (IVR): dźwięk z głośnością inną niż 100% jest najpierw przygotowywany jako gotowy plik WAV (znana długość, zapisany na kolejne połączenia) zamiast przesyłania „na żywo” – go2rtc odtwarza go jak zwykły plik. Błędy przygotowania widać w logu i po przycisku testu.
+
 ## 1.0.4
 - Poczekalnia (IVR): głośność inna niż 100% działa. go2rtc odrzuca źródła ze spacjami („source with spaces may be insecure”), więc filtr głośności nie mógł do niego trafić – teraz add-on sam przygotowuje ściszony / wzmocniony dźwięk (FFmpeg w obrazie add-onu, 100% bez zmian).
 - Poczekalnia: powitanie po polsku – mowa z HA zawsze z językiem „pl” (wcześniej silnik czytał polski tekst angielskim głosem); wybór silnika TTS z listy, język i głos (np. HA Cloud ZofiaNeural, Piper pl_PL-gosia-medium).

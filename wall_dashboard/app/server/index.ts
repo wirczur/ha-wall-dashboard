@@ -21,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -1113,15 +1113,21 @@ async function ttsUrl(text: string, engine?: string, language = 'pl', voice?: st
 }
 const ttsSeconds = (text: string) => 1.5 + text.length * 0.075;
 // ------------------------------------------------------------ IVR sounds with changed loudness (FFmpeg in the add-on)
-const ivrAudio = new Map<string, { url: string; vol: number; at: number }>();
-setInterval(() => { const old = Date.now() - 30 * 60_000; for (const [k, v] of ivrAudio) if (v.at < old) ivrAudio.delete(k); }, 5 * 60_000).unref();
+// go2rtc refuses API sources with spaces, so no volume filter can go to go2rtc. The add-on renders the sound once to a
+// finished WAV file (known length – go2rtc plays it like any other file) and serves it at /ivr-audio/<id>.wav.
+const IVR_DIR = path.join(DATA_DIR, 'ivr-cache');
+fs.mkdirSync(IVR_DIR, { recursive: true });
+setInterval(() => {
+  const old = Date.now() - 6 * 3600_000;
+  for (const f of fs.readdirSync(IVR_DIR)) { try { if (fs.statSync(path.join(IVR_DIR, f)).mtimeMs < old) fs.unlinkSync(path.join(IVR_DIR, f)); } catch { /* gone */ } }
+}, 30 * 60_000).unref();
 /** PCM16 WAV in memory → same WAV with every sample multiplied (fallback without FFmpeg) */
 function scaleWav(buf: Buffer, gain: number): Buffer | null {
   if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
   let p = 12, fmtBits = 0, dataAt = -1, dataLen = 0;
   while (p + 8 <= buf.length) {
     const id = buf.toString('ascii', p, p + 4), len = buf.readUInt32LE(p + 4);
-    if (id === 'fmt ') fmtBits = buf.readUInt16LE(p + 8 + 14) * (buf.readUInt16LE(p + 8) === 1 ? 1 : 0);
+    if (id === 'fmt ') fmtBits = buf.readUInt16LE(p + 8) === 1 ? buf.readUInt16LE(p + 8 + 14) : 0;
     if (id === 'data') { dataAt = p + 8; dataLen = Math.min(len, buf.length - dataAt); break; }
     p += 8 + len + (len & 1);
   }
@@ -1130,26 +1136,41 @@ function scaleWav(buf: Buffer, gain: number): Buffer | null {
   for (let i = dataAt; i + 1 < dataAt + dataLen; i += 2) out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(buf.readInt16LE(i) * gain))), i);
   return out;
 }
-admin.get('/ivr-audio/:id.wav', async (req, res) => {
-  const e = ivrAudio.get(String(req.params.id));
-  if (!e) return res.status(404).end();
-  const gain = e.vol / 100;
-  const filter = `volume=${gain.toFixed(2)}${e.vol > 100 ? ',alimiter=limit=0.95' : ''}`;
-  res.type('audio/wav');
-  const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', e.url, '-vn', '-af', filter, '-ac', '1', '-ar', '16000', '-f', 'wav', '-']);
-  let spawned = false;
-  ff.on('spawn', () => { spawned = true; ff.stdout.pipe(res); });
-  ff.stderr.on('data', (d) => log.debug('IVR ffmpeg: ' + String(d).trim()));
-  req.on('close', () => { if (spawned) ff.kill('SIGKILL'); });
-  ff.on('error', async () => {
-    // no FFmpeg (e.g. outside the add-on image): WAV files are scaled here, others are played as they are
-    if (spawned) return;
-    try {
-      const r = await fetch(e.url, { signal: AbortSignal.timeout(8000) });
-      const raw = Buffer.from(await r.arrayBuffer());
-      res.end(scaleWav(raw, gain) ?? raw);
-    } catch (err: any) { log.warn('IVR głośność: ' + err.message); res.status(502).end(); }
-  });
+const runFfmpeg = (args: string[], timeoutMs = 30_000) => new Promise<void>((resolve, reject) => {
+  const ff = spawn('ffmpeg', args);
+  let err = '';
+  ff.stderr.on('data', (d) => { err = (err + String(d)).slice(-400); });
+  const t = setTimeout(() => { ff.kill('SIGKILL'); reject(new Error('FFmpeg: przekroczony czas')); }, timeoutMs);
+  ff.on('error', (e: any) => { clearTimeout(t); reject(e); });
+  ff.on('close', (code) => { clearTimeout(t); code === 0 ? resolve() : reject(new Error('FFmpeg: ' + (err.trim() || 'kod ' + code))); });
+});
+/** returns the id of the rendered file (cached per source + loudness) */
+async function ivrPrepare(url: string, vol: number): Promise<string> {
+  const id = crypto.createHash('sha1').update(url + '|' + vol).digest('hex').slice(0, 20);
+  const file = path.join(IVR_DIR, id + '.wav');
+  if (fs.existsSync(file) && fs.statSync(file).size > 44) { fs.utimesSync(file, new Date(), new Date()); return id; }
+  const gain = vol / 100;
+  const tmp = file + '.part.wav';
+  try {
+    await runFfmpeg(['-hide_banner', '-loglevel', 'error', '-y', '-i', url, '-vn', '-af', `volume=${gain.toFixed(2)}${vol > 100 ? ',alimiter=limit=0.95' : ''}`,
+      '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', tmp]);
+  } catch (e: any) {
+    if (e?.code !== 'ENOENT') throw e;
+    // no FFmpeg (e.g. outside the add-on image): only WAV files can be scaled here
+    const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) throw new Error(`Pobranie dźwięku: HTTP ${r.status}`);
+    const scaled = scaleWav(Buffer.from(await r.arrayBuffer()), gain);
+    if (!scaled) throw new Error('Brak FFmpeg – zmiana głośności działa tylko dla plików WAV');
+    fs.writeFileSync(tmp, scaled);
+  }
+  fs.renameSync(tmp, file);
+  log.info(`IVR: przygotowano dźwięk ${vol}% (${Math.round(fs.statSync(file).size / 1024)} KB)`);
+  return id;
+}
+admin.get('/ivr-audio/:id.wav', (req, res) => {
+  const id = String(req.params.id);
+  if (!/^[a-f0-9]{20}$/.test(id) || !fs.existsSync(path.join(IVR_DIR, id + '.wav'))) return res.status(404).end();
+  res.type('audio/wav').sendFile(path.join(IVR_DIR, id + '.wav'));
 });
 
 /** plays on the intercom speaker; returns an error text (shown by the editor's test button) */
@@ -1171,9 +1192,10 @@ async function ivrPlay(a: ActiveCall, src: string, music = false): Promise<strin
   // cannot go into the go2rtc source. For loudness ≠ 100 % the add-on serves the sound already turned up / down.
   let playUrl = url;
   if (vol !== 100 && !live) {
-    const id = crypto.randomBytes(8).toString('hex');
-    ivrAudio.set(id, { url, vol, at: Date.now() });
-    playUrl = `${base}/ivr-audio/${id}.wav`;
+    // the add-on fetches the source itself – through its own address, not the one go2rtc uses
+    const local = url.startsWith(base + '/') ? `http://127.0.0.1:${ADMIN_PORT}/${url.slice(base.length + 1)}` : url;
+    try { playUrl = `${base}/ivr-audio/${await ivrPrepare(local, vol)}.wav`; }
+    catch (e: any) { log.warn('IVR głośność: ' + e.message); return 'Głośność ' + vol + '%: ' + e.message; }
   }
   const s = `ffmpeg:${playUrl}#audio=${codec}${live ? '' : '#input=file'}`;
   a.ivr ??= { stream, playing: false };
