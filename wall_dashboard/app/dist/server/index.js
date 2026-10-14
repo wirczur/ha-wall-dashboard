@@ -19,7 +19,7 @@ import { importHouse, validateHouse } from './houses.js';
 import { TvRegistry } from './samsung.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -1611,10 +1611,27 @@ function ivrSchedule(a) {
             log.info(`IVR „${a.t.name}”: odbieram i gram poczekalnię`);
             a.rec.ivr = true;
             if (iv.answerEntity && ha) {
-                await pressEntity(iv.answerEntity, 'IVR odbierz');
+                // Hikvision ignores "answer" sent in the first moment of the call – press again until the call state leaves "ringing"
+                // (the trigger's own entity, when the trigger has a "to" state); without a state to watch: a single press
+                const alive = () => activeCalls.get(trgId(a.t)) === a && a.rec.status === 'ringing';
+                const ringing = () => !!a.t.to && ha?.states.get(a.t.entity)?.state === a.t.to;
+                for (let i = 1; i <= 6; i++) {
+                    log.info(`IVR „${a.t.name}”: odbieram (${iv.answerEntity})${i > 1 ? ` – próba ${i}` : ''}`);
+                    await pressEntity(iv.answerEntity, 'IVR odbierz');
+                    for (let w = 0; w < 10 && alive() && ringing(); w++)
+                        await new Promise((r) => setTimeout(r, 200));
+                    if (!alive())
+                        return;
+                    if (!a.t.to || !ringing())
+                        break;
+                    if (i === 6)
+                        log.warn(`IVR „${a.t.name}”: domofon nie odebrał (${a.t.entity} nadal „${a.t.to}”) – gram mimo to`);
+                }
+                if (a.t.to && !ringing())
+                    log.info(`IVR „${a.t.name}”: odebrane (${a.t.entity} = ${ha?.states.get(a.t.entity)?.state})`);
                 // the intercom needs a moment to open its speaker after answering – otherwise the start of the greeting is lost
                 await new Promise((r) => setTimeout(r, 1000));
-                if (activeCalls.get(trgId(a.t)) !== a || a.rec.status !== 'ringing')
+                if (!alive())
                     return;
             }
             const greeting = iv.greeting || (iv.greetingText ? 'tts:' + iv.greetingText : '');

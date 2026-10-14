@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.9
+- Poczekalnia (IVR): „Odbierz w domofonie” jest naciskany ponownie (co 2 s, do 6 razy), dopóki stan połączenia (encja wyzwalacza, np. Call state z Hikvision Doorbell) nie przestanie być „dzwoni” – domofon ignoruje odebranie w pierwszej chwili połączenia. Muzyka startuje po odebraniu; w logu widać każdą próbę i moment odebrania.
+
 ## 1.0.8
 - Przewijanie list (AGD, historia dzwonków, panel boczny) na dużych ekranach: przeciąganie myszą / rysikiem / ramką dotykową USB (zgłaszają się jak mysz) przewija listę jak palcem; puszczenie po przeciągnięciu nie jest kliknięciem.
 - Starsze WebView: gdy palec przesuwa listę, a przeglądarka jej nie przewija, panel przewija ją sam.
