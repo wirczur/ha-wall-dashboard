@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+- Parowanie aplikacji: przy każdym kodzie wybór „Nowy tablet” albo istniejący tablet; urządzenie parowane ponownie samo podpowiada tablet, z którym było sparowane (zachowuje klucz, dashboardy i ustawienia). Ręczne wpisanie kodu zwinięte pod „Wpisz kod ręcznie”.
+- Podpowiedź: aplikację paruj adresem https:// (opcja „ssl” add-onu) – bez tego nie działa mikrofon.
+
 ## 1.0.1
 - Telewizory Samsung: uruchamianie aplikacji działa na nowszych modelach – add-on próbuje kolejno REST, DEEP_LINK i NATIVE_LAUNCH i sprawdza w telewizorze, czy aplikacja wystartowała. Gdy żaden sposób nie zadziała, panel pokazuje komunikat.
 - Wykrywanie aplikacji: także Apple Music, Deezer i inne wersje Disney+.

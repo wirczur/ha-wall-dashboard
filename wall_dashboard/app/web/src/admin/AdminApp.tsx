@@ -318,7 +318,9 @@ const BackupCard: FC = () => {
 const PairCard: FC<{ tablets: Tablet[]; onDone(): void }> = ({ tablets, onDone }) => {
   const [list, setList] = useState<PairRequest[]>([]);
   const [code, setCode] = useState('');
-  const [target, setTarget] = useState('');
+  const [codeTarget, setCodeTarget] = useState('');
+  /** chosen tablet per waiting code ('' = new tablet) */
+  const [targets, setTargets] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
   useEffect(() => {
     let alive = true;
@@ -326,28 +328,40 @@ const PairCard: FC<{ tablets: Tablet[]; onDone(): void }> = ({ tablets, onDone }
     load(); const t = setInterval(load, 3000);
     return () => { alive = false; clearInterval(t); };
   }, []);
-  const pair = async (c: string) => {
+  // re-pairing the same device: suggest the tablet it was paired with before
+  const guess = (p: PairRequest) => tablets.find((t) => t.appModel && t.appModel === p.device)?.id ?? '';
+  const targetOf = (p: PairRequest) => targets[p.code] ?? guess(p);
+  const pair = async (c: string, target: string, device?: string) => {
     try {
-      const t = await api.post<Tablet>('pair/' + c, target === '' ? { name: list.find((p) => p.code === c)?.device } : { tabletId: target });
+      const t = await api.post<Tablet>('pair/' + c, target === '' ? { name: device } : { tabletId: target });
       setMsg(`Sparowano z „${t.name}” – panel za chwilę otworzy dashboard.`); setCode(''); onDone();
     } catch (e: any) { setMsg(e.message); }
   };
+  const TabletSelect: FC<{ value: string; onChange(v: string): void }> = ({ value, onChange }) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Tablet">
+      <option value="">➕ Nowy tablet</option>
+      <optgroup label="Istniejący tablet (zachowa jego dashboardy i ustawienia)">
+        {tablets.map((t) => <option key={t.id} value={t.id}>{t.name}{t.appModel ? ' · ' + t.appModel : ''}</option>)}
+      </optgroup>
+    </select>
+  );
   return (
     <div className="card pair-card">
       <h3><Icon name="mdi:cellphone-link" size={20} /> Aplikacja Wall Dashboard (Android) – parowanie</h3>
-      <p className="muted small">Uruchom aplikację na panelu, wpisz adres add-onu (np. 192.168.1.10:8100) – panel pokaże 6-cyfrowy kod. Wpisz go tutaj albo wybierz z listy.</p>
-      <div className="row-btns">
-        <input inputMode="numeric" maxLength={7} placeholder="kod z panelu" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ width: 140 }} />
-        <select value={target} onChange={(e) => setTarget(e.target.value)}>
-          <option value="">Nowy tablet</option>
-          {tablets.map((t) => <option key={t.id} value={t.id}>{t.name}{t.appModel ? ' · ' + t.appModel : ''}</option>)}
-        </select>
-        <button className="btn primary" disabled={code.length !== 6} onClick={() => pair(code)}>Sparuj</button>
-      </div>
+      <p className="muted small">Uruchom aplikację na panelu i wpisz adres add-onu <b>https://</b>…:8100 (opcja „ssl” w konfiguracji add-onu – bez niej nie działa mikrofon). Panel pokaże 6-cyfrowy kod – wybierz, czy to nowy tablet, czy istniejący (np. ten, którego używał Fully albo panel po ponownym parowaniu).</p>
       {list.length > 0 && <ul className="pair-list">{list.map((p) => (
         <li key={p.code}><b>{p.code.slice(0, 3)} {p.code.slice(3)}</b><span>{p.device || 'panel'} · {p.ip} · {Math.max(0, Math.round((Date.now() - p.at) / 60000))} min temu</span>
-          <button className="btn" onClick={() => pair(p.code)}>Sparuj z: {target ? tablets.find((t) => t.id === target)?.name : 'nowy tablet'}</button></li>
+          <TabletSelect value={targetOf(p)} onChange={(v) => setTargets({ ...targets, [p.code]: v })} />
+          <button className="btn primary" onClick={() => pair(p.code, targetOf(p), p.device)}>Sparuj</button></li>
       ))}</ul>}
+      <details className="small"><summary>Wpisz kod ręcznie</summary>
+        <div className="row-btns" style={{ marginTop: 8 }}>
+          <input inputMode="numeric" maxLength={7} placeholder="kod z panelu" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ width: 140 }} />
+          <TabletSelect value={codeTarget} onChange={setCodeTarget} />
+          <button className="btn" disabled={code.length !== 6} onClick={() => pair(code, codeTarget)}>Sparuj</button>
+        </div>
+      </details>
+      {!list.length && <p className="muted small">Brak paneli czekających na sparowanie.</p>}
       {msg && <p className="small">{msg}</p>}
     </div>
   );
