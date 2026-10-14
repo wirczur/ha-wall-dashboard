@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+- Poczekalnia (IVR): przycisk odsłuchu przy dźwięku (powitanie, muzyka) gra z ustawioną głośnością.
+- Poczekalnia: start bez opóźnienia przy „po 0 s” – mowa z HA i ściszony dźwięk są przygotowywane z góry (po zapisaniu reguł i po starcie add-onu), a adres mowy z HA jest pamiętany. Po naciśnięciu „odbierz” add-on czeka 1 s, aż domofon otworzy kanał audio, i sprawdza, czy dzwonek nadal trwa.
+
 ## 1.0.5
 - Poczekalnia (IVR): dźwięk z głośnością inną niż 100% jest najpierw przygotowywany jako gotowy plik WAV (znana długość, zapisany na kolejne połączenia) zamiast przesyłania „na żywo” – go2rtc odtwarza go jak zwykły plik. Błędy przygotowania widać w logu i po przycisku testu.
 

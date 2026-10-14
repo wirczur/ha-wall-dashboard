@@ -21,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.5';
+const VERSION = '1.0.6';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -1093,7 +1093,17 @@ function audioLength(src: string): number | undefined {
  * Polish speech from HA TTS. Without a language most engines speak with their default (often English) voice,
  * which makes Polish text sound wrong – so the language is always sent (pl, then pl-PL, then the engine default).
  */
+const ttsCache = new Map<string, { url: string; at: number }>();
 async function ttsUrl(text: string, engine?: string, language = 'pl', voice?: string) {
+  // HA keeps generated speech in its cache: the same text gives the same URL – no waiting on the next ring
+  const ck = [text, engine, language, voice].join('|');
+  const hit = ttsCache.get(ck);
+  if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.url;
+  const url = await ttsUrlFresh(text, engine, language, voice);
+  ttsCache.set(ck, { url, at: Date.now() });
+  return url;
+}
+async function ttsUrlFresh(text: string, engine?: string, language = 'pl', voice?: string) {
   const client = requireHa();
   const all = [...client.states.keys()].filter((e) => e.startsWith('tts.'));
   const eng = engine || all.find((e) => /_pl(_|$)|polish|polsk/i.test(e)) || all[0];
@@ -1209,6 +1219,23 @@ async function ivrPlay(a: ActiveCall, src: string, music = false): Promise<strin
   if (err) log.warn('IVR ' + err);
   return err;
 }
+/** prepares speech and louder / quieter files in advance, so the waiting room starts without delay */
+async function ivrWarm(t: TriggerDef) {
+  const iv = t.ivr; if (!iv || !ha?.connected) return;
+  const base = `http://127.0.0.1:${ADMIN_PORT}`;
+  const abs = (src: string) => (/^https?:\/\//.test(src) ? src : `${base}/${src.replace(/^\//, '')}`);
+  const jobs: [string, number][] = [];
+  try {
+    if (iv.greetingText) jobs.push([await ttsUrl(iv.greetingText, iv.tts, iv.ttsLanguage || 'pl', iv.ttsVoice), iv.volume ?? 100]);
+    if (iv.goodbyeText) jobs.push([await ttsUrl(iv.goodbyeText, iv.tts, iv.ttsLanguage || 'pl', iv.ttsVoice), iv.volume ?? 100]);
+  } catch (e: any) { log.debug('IVR przygotowanie mowy: ' + e.message); }
+  if (iv.greeting) jobs.push([abs(iv.greeting), iv.volume ?? 100]);
+  if (iv.goodbye) jobs.push([abs(iv.goodbye), iv.volume ?? 100]);
+  if (iv.music && /\.(mp3|wav|ogg|m4a|aac)(\?|$)/i.test(iv.music)) jobs.push([abs(iv.music), iv.musicVolume ?? 100]);
+  for (const [url, vol] of jobs) if (vol !== 100) await ivrPrepare(url, vol).catch((e) => log.debug('IVR przygotowanie: ' + e.message));
+}
+const ivrWarmAll = () => { for (const t of store.data.triggers ?? []) if (t.ivr) void ivrWarm(t); };
+
 function ivrSchedule(a: ActiveCall) {
   const iv = a.t.ivr!;
   const loop = () => {
@@ -1224,6 +1251,9 @@ function ivrSchedule(a: ActiveCall) {
     if (iv.answerEntity && ha) {
       const d = iv.answerEntity.split('.')[0];
       await ha.callService(d === 'button' || d === 'input_button' ? d : d === 'switch' ? 'switch' : d, d === 'button' || d === 'input_button' ? 'press' : 'turn_on', {}, { entity_id: iv.answerEntity }).catch((e: Error) => log.warn('IVR odbierz: ' + e.message));
+      // the intercom needs a moment to open its speaker after answering – otherwise the start of the greeting is lost
+      await new Promise((r) => setTimeout(r, 1000));
+      if (activeCalls.get(trgId(a.t)) !== a || a.rec.status !== 'ringing') return;
     }
     const greeting = iv.greeting || (iv.greetingText ? 'tts:' + iv.greetingText : '');
     if (greeting) {
@@ -1437,6 +1467,7 @@ api.put('/triggers', (req, res) => {
   if (!Array.isArray(req.body)) return res.status(400).json({ error: 'Oczekiwano listy wyzwalaczy' });
   store.data.triggers = req.body.map(cleanTrigger).filter(Boolean) as TriggerDef[];
   store.write(); res.json(store.data.triggers);
+  ivrWarmAll();
 });
 api.post('/triggers/test', (req, res) => {
   const t = cleanTrigger(req.body);
@@ -1463,6 +1494,7 @@ if (ha) {
   ha.on('snapshot', () => { for (const c of clients) send(c, { type: 'states', states: visibleStates(c) }); });
   ha.on('status', (connected: boolean) => { for (const c of clients) send(c, { type: 'ha', connected }); });
   ha.on('popup', (data: any) => sendPopup(data));
+  ha.on('snapshot', () => setTimeout(ivrWarmAll, 3000));
   ha.on('command', (d: any) => deviceCommand(d?.tablet ?? d?.tablets, d?.command, d?.value));
 }
 

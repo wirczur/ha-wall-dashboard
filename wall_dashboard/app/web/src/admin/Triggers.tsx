@@ -1,5 +1,5 @@
 // Built-in triggers: when an entity changes (doorbell, intercom, gate, motion…) show a pop-up and/or wake the tablets.
-import { useEffect, useState, type FC } from 'react';
+import { useEffect, useRef, useState, type FC } from 'react';
 import type { PanelRow, PopupDef, Tablet, TriggerDef } from '../../../shared/types';
 import { PopupView } from '../kiosk/Popup';
 import { api } from '../lib/api';
@@ -160,11 +160,27 @@ export const SoundSelect: FC<{ label: string; value?: string; onChange(v: string
   useEffect(() => { api.get<string[]>('media').then((l) => setFiles(l.filter((f) => /\.(mp3|wav|ogg|m4a|aac)$/i.test(f)))).catch(() => {}); }, []);
   const opts: [string, string][] = [['', none], ...SOUNDS, ...files.map((f): [string, string] => ['media/' + f, 'Mój plik: ' + f])];
   const custom = !!value && !opts.some(([v]) => v === value);
-  const play = () => {
-    if (playing) { stopTabletSound(); setPlaying(false); return; }
+  const stopRef = useRef<(() => void) | null>(null);
+  const play = async () => {
+    if (playing) { stopRef.current?.(); stopTabletSound(); setPlaying(false); return; }
     if (!value) return;
-    playTabletSound(value, { volume });
-    setPlaying(true); setTimeout(() => setPlaying(false), 8000);
+    setErr('');
+    if (volume == null || volume === 100) {
+      playTabletSound(value, { volume });
+      setPlaying(true); setTimeout(() => setPlaying(false), 8000);
+      return;
+    }
+    // preview at the set loudness (also above 100 %) – Web Audio gain, like the add-on does for the intercom
+    try {
+      const ctx = new AudioContext();
+      const buf = await ctx.decodeAudioData(await (await fetch(new URL(value, location.href).href)).arrayBuffer());
+      const src = ctx.createBufferSource(); src.buffer = buf;
+      const g = ctx.createGain(); g.gain.value = Math.max(0, Math.min(3, volume / 100));
+      src.connect(g).connect(ctx.destination); src.start();
+      const stop = () => { try { src.stop(); } catch { /* ended */ } void ctx.close(); stopRef.current = null; setPlaying(false); };
+      stopRef.current = stop; setPlaying(true);
+      setTimeout(stop, Math.min(buf.duration, 20) * 1000);
+    } catch (e: any) { setErr('Nie mogę odtworzyć: ' + (e?.message || e)); setPlaying(false); }
   };
   return (
     <>
@@ -220,8 +236,8 @@ const IvrEditor: FC<{ t: TriggerDef; onChange(p: Partial<TriggerDef>): void }> =
       {iv && <>
         <NumF label="Zacznij po (s dzwonienia)" value={iv.after ?? 8} min={0} max={120} onChange={(v) => set({ after: v })} hint="0 = od razu" />
         <TextF label="Powitanie (mowa z HA)" value={iv.greetingText} onChange={(v) => set({ greetingText: v })} placeholder="Dzień dobry, proszę chwilę poczekać…" />
-        {!iv.greetingText && <SoundSelect label="…albo plik powitania" value={iv.greeting} onChange={(v) => set({ greeting: v })} />}
-        <SoundSelect label="Muzyka oczekiwania (w pętli)" value={iv.music} none="— bez muzyki —" onChange={(v) => set({ music: v })} />
+        {!iv.greetingText && <SoundSelect label="…albo plik powitania" value={iv.greeting} volume={iv.volume ?? 100} onChange={(v) => set({ greeting: v })} />}
+        <SoundSelect label="Muzyka oczekiwania (w pętli)" value={iv.music} volume={iv.musicVolume ?? 100} none="— bez muzyki —" onChange={(v) => set({ music: v })} />
         <TextF label="Pożegnanie, gdy nikt nie odebrał" value={iv.goodbyeText} onChange={(v) => set({ goodbyeText: v })} placeholder="Niestety nikt nie odbiera. Prosimy zostawić przesyłkę przy furtce." />
         <div className="ins-grid2">
           <NumF label="Głośność powitania / pożegnania (%)" value={iv.volume ?? 100} min={0} max={300} step={10} onChange={(v) => set({ volume: v })} hint="100 = jak w pliku; powyżej 100 z ogranicznikiem" />
