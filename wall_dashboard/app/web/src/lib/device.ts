@@ -5,6 +5,8 @@ import type { DeviceCmd, ScreenDef } from '../../../shared/types';
 export interface WallApp {
   setConfig?(json: string): void; reload?(): void; restart?(): void;
   screenOn?(): void; screenOff?(): void; saver?(): void; setBrightness?(pct: number): void; version?(): string;
+  /** values for the dark-screen clock: [{ icon, text, warn }] as JSON */
+  setSaverInfo?(json: string): void;
 }
 type FullyCmd = { turnScreenOn?(): void; turnScreenOff?(keepAlive?: boolean): void; startScreensaver?(): void; restartApp?(): void; setScreenBrightness?(v: number): void };
 declare global { interface Window { wallApp?: WallApp } }

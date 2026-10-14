@@ -593,6 +593,23 @@ export interface ScreenDef {
   brightness?: number;
   /** brightness for mode "dim", 0–100 (default 3) */
   dimBrightness?: number;
+  /** clock on the dark screen (black screen mode, Android app) */
+  clock?: SaverClock;
+}
+/** Clock on the dark screen: separately for the night windows and for "no touch" in the day */
+export interface SaverClock {
+  /** in the night windows (hours) */
+  night?: boolean;
+  /** after the idle time outside the windows (and for "Wygaś" from HA) */
+  idle?: boolean;
+  /** weekday and date under the time */
+  date?: boolean;
+  /** up to 4 values from HA under the clock (temperature, alarm, …) */
+  entities?: { entity: string; label?: string }[];
+  /** missed doorbell calls (only when there are some) */
+  calls?: boolean;
+  /** screen brightness while the clock is shown, 1–60 % (default 8) */
+  brightness?: number;
 }
 export type DeviceCmd = 'reload' | 'restart' | 'screen-on' | 'screen-off' | 'saver' | 'brightness';
 export interface PairRequest { code: string; device: string; ip: string; at: number }

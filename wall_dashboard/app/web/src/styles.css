@@ -1268,3 +1268,8 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 .cl-cyc.cl-feat[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .cl-cyc.cl-feat span { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .cl-feats-c { flex-wrap: nowrap; overflow: hidden; }
+
+/* admin: dark-screen clock values */
+.clk-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; gap: 6px; align-items: center; margin: 4px 0; }
+.clk-row code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clk-row input { min-width: 0; }

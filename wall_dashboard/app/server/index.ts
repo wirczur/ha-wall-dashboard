@@ -20,7 +20,7 @@ import { TvRegistry } from './samsung.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -406,6 +406,17 @@ api.put('/tablets/:id', (req, res) => {
   res.json(t);
 });
 
+function cleanClock(c: any): ScreenDef['clock'] {
+  if (!c || typeof c !== 'object') return undefined;
+  const ents = Array.isArray(c.entities) ? c.entities.filter((e: any) => e && typeof e.entity === 'string' && ENTITY_RE.test(e.entity)).slice(0, 4)
+    .map((e: any) => ({ entity: e.entity, ...(typeof e.label === 'string' && e.label.trim() ? { label: e.label.trim().slice(0, 30) } : {}) })) : [];
+  const out = {
+    night: c.night ? true : undefined, idle: c.idle ? true : undefined, date: c.date ? true : undefined, calls: c.calls ? true : undefined,
+    entities: ents.length ? ents : undefined,
+    brightness: isFinite(Number(c.brightness)) && c.brightness !== '' && c.brightness != null ? Math.max(1, Math.min(60, Math.round(Number(c.brightness)))) : undefined
+  };
+  return Object.values(out).some((v) => v !== undefined) ? out : undefined;
+}
 function cleanScreen(s: any): ScreenDef | undefined {
   if (!s || typeof s !== 'object') return undefined;
   const time = (v: unknown) => (typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v) ? v : undefined);
@@ -416,7 +427,8 @@ function cleanScreen(s: any): ScreenDef | undefined {
     mode: ['saver', 'dim', 'off'].includes(s.mode) ? s.mode : undefined,
     idle: isFinite(Number(s.idle)) && Number(s.idle) > 0 ? Math.min(24 * 60, Math.round(Number(s.idle))) : undefined,
     hours: hours.length ? hours : undefined,
-    brightness: pct(s.brightness, 1), dimBrightness: pct(s.dimBrightness)
+    brightness: pct(s.brightness, 1), dimBrightness: pct(s.dimBrightness),
+    clock: cleanClock(s.clock)
   };
   return Object.values(out).some((v) => v !== undefined) ? out : undefined;
 }

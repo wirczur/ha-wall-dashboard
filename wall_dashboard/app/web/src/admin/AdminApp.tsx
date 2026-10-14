@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FC } from 'react';
 import { SoundSelect, Triggers } from './Triggers';
 import { SceneAutomation } from './SceneAutomation';
-import type { DashboardSummary, DeviceCmd, EntityInfo, PairRequest, ScreenDef, Settings, Tablet } from '../../../shared/types';
+import type { DashboardSummary, DeviceCmd, EntityInfo, PairRequest, SaverClock, ScreenDef, Settings, Tablet } from '../../../shared/types';
 import { api } from '../lib/api';
 import { boot } from '../lib/boot';
 import { hass, useConnection } from '../lib/hass';
@@ -417,6 +417,7 @@ const AppSettings: FC<{ t: Tablet; onSave(p: Partial<Tablet>): void }> = ({ t, o
           {JSON.stringify(hours) !== JSON.stringify(s.hours ?? []) && <button className="btn primary" onClick={() => put({ hours })}>Zapisz godziny</button>}
         </div>
       </div>
+      <ClockEditor clock={s.clock} hasHours={hours.length > 0} onChange={(clock) => put({ clock })} />
       <label className="field"><span>PIN do ustawień aplikacji (4–8 cyfr, puste = bez PIN-u)</span>
         <input inputMode="numeric" maxLength={8} defaultValue={t.appPin ?? ''} onBlur={(e) => e.target.value !== (t.appPin ?? '') && onSave({ appPin: e.target.value.replace(/\D/g, '') })} />
         <small className="muted">Ustawienia otwierasz, przytrzymując 3 s lewy górny róg ekranu.</small></label>
@@ -431,6 +432,41 @@ data:
     command: saver          # reload | restart | screen-on | screen-off | saver | brightness
     value: 40               # tylko dla brightness (0–100)`}</pre>
       </details>
+    </fieldset>
+  );
+};
+
+/** Clock on the dark screen (Android app, black screen mode) */
+const ClockEditor: FC<{ clock?: SaverClock; hasHours: boolean; onChange(c: SaverClock | undefined): void }> = ({ clock, hasHours, onChange }) => {
+  const c = clock ?? {};
+  const [add, setAdd] = useState('');
+  const set = (p: Partial<SaverClock>) => onChange({ ...c, ...p });
+  const ents = c.entities ?? [];
+  return (
+    <fieldset className="field quiet-ed"><legend>Zegar na wygaszonym ekranie (czarny ekran)</legend>
+      <label className="check"><input type="checkbox" checked={!!c.night} onChange={(e) => set({ night: e.target.checked || undefined })} />W trybie nocnym (okna godzinowe powyżej){!hasHours && <small className="muted"> – dodaj okno, np. 23:00–6:30</small>}</label>
+      <label className="check"><input type="checkbox" checked={!!c.idle} onChange={(e) => set({ idle: e.target.checked || undefined })} />Po wygaszeniu w dzień (brak dotyku, „Wygaś” z HA)</label>
+      {(c.night || c.idle) && <>
+        <label className="check"><input type="checkbox" checked={!!c.date} onChange={(e) => set({ date: e.target.checked || undefined })} />Dzień tygodnia i data</label>
+        <label className="check"><input type="checkbox" checked={!!c.calls} onChange={(e) => set({ calls: e.target.checked || undefined })} />Nieodebrane dzwonki (tylko gdy są)</label>
+        <label className="field"><span>Jasność ekranu z zegarem (1–60 %, domyślnie 8)</span>
+          <input type="number" min={1} max={60} defaultValue={c.brightness ?? ''} placeholder="8" onBlur={(e) => set({ brightness: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
+        <div className="field"><span>Wartości pod zegarem (do 4) – np. temperatura na zewnątrz, alarm</span>
+          {ents.map((x, i) => (
+            <div key={x.entity} className="clk-row">
+              <code className="small" title={x.entity}>{x.entity}</code>
+              <input placeholder="podpis" defaultValue={x.label ?? ''} onBlur={(e) => set({ entities: ents.map((y, j) => (j === i ? { entity: y.entity, ...(e.target.value.trim() ? { label: e.target.value.trim() } : {}) } : y)) })} />
+              <button className="mini" onClick={() => set({ entities: ents.filter((_, j) => j !== i) })} aria-label={'Usuń ' + x.entity}>×</button>
+            </div>
+          ))}
+          {ents.length < 4 && <div className="row-btns">
+            <input list="ents-saver" placeholder="sensor.temperatura_zewnatrz" value={add} onChange={(e) => setAdd(e.target.value.trim())} />
+            <button className="btn" disabled={!add} onClick={() => { if (!ents.some((y) => y.entity === add)) set({ entities: [...ents, { entity: add }] }); setAdd(''); }}>Dodaj</button>
+          </div>}
+          <datalist id="ents-saver">{[...hass.states.keys()].filter((e) => /^(sensor|binary_sensor|alarm_control_panel|lock|weather|input_number|climate)\./.test(e)).map((e) => <option key={e} value={e} />)}</datalist>
+        </div>
+        <p className="muted small">Zegar jest przygaszony i co minutę lekko się przesuwa (ochrona ekranu). Dotknięcie wraca do dashboardu.</p>
+      </>}
     </fieldset>
   );
 };

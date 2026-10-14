@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FC } from 'react';
 import type { DashboardDoc, HouseDef, ScreenDef, TvApp } from '../../../shared/types';
-import { configureApp } from '../lib/device';
+import { configureApp, isWallApp } from '../lib/device';
+import { SaverFeed } from './SaverFeed';
 import { setTvs } from '../remote/Remote';
 import { setHouses } from '../house/houseStore';
 import { api } from '../lib/api';
@@ -57,6 +58,7 @@ export const KioskApp: FC = () => {
     {!paused && <DashboardView key={doc.id} doc={doc} onDashboard={(id) => {
       if (data.dashboards.some((d) => d.id === id)) setCurrent(id);
     }} />}
+    {isWallApp() && <SaverFeed clock={data.tablet.screen?.clock} />}
     <PopupHost />
     <QuietBadge />
     {data.tablet.intercom !== false && <IntercomHost cfg={data.tablet.intercomCfg} />}

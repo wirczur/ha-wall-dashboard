@@ -70,6 +70,8 @@ export function kioskScope(store: Store, tablet: Tablet) {
   for (const e of [...entities, ...tvs]) {
     if (/^(remote|media_player)\.[a-z0-9_]+$/.test(e)) { const obj = e.split('.')[1]; entities.add(e); entities.add('remote.' + obj); entities.add('media_player.' + obj); }
   }
+  // values shown on the dark-screen clock (Android app)
+  for (const e of tablet.screen?.clock?.entities ?? []) if (ENTITY_RE.test(e.entity)) entities.add(e.entity);
   // a "schedules" widget lists every scheduler entity, including ones created later from the tablet
   const schedules = dashboards.some((id) => store.get(id)!.views.some((v) => v.widgets.some((w) => w.type === 'schedules')));
   return { dashboards, entities, houses: [...houses], tvs, schedules };

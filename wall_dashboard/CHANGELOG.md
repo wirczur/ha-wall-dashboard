@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.3
+- Zegar na wygaszonym ekranie (aplikacja Wall Dashboard na Androida, tryb „czarny ekran”): osobno w trybie nocnym (okna godzinowe) i po wygaszeniu w dzień; opcjonalnie data, do 4 wartości z HA (np. temperatura na zewnątrz, alarm) i nieodebrane dzwonki. Przygaszony, co minutę lekko przesuwany (ochrona ekranu). Ustawienia: Tablety → Ekran i aplikacja → Zegar na wygaszonym ekranie. Wymaga aplikacji 0.1.3.
+
 ## 1.0.2
 - Parowanie aplikacji: przy każdym kodzie wybór „Nowy tablet” albo istniejący tablet; urządzenie parowane ponownie samo podpowiada tablet, z którym było sparowane (zachowuje klucz, dashboardy i ustawienia). Ręczne wpisanie kodu zwinięte pod „Wpisz kod ręcznie”.
 - Podpowiedź: aplikację paruj adresem https:// (opcja „ssl” add-onu) – bez tego nie działa mikrofon.
