@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+- Poczekalnia (IVR): głośność inna niż 100% działa. go2rtc odrzuca źródła ze spacjami („source with spaces may be insecure”), więc filtr głośności nie mógł do niego trafić – teraz add-on sam przygotowuje ściszony / wzmocniony dźwięk (FFmpeg w obrazie add-onu, 100% bez zmian).
+- Poczekalnia: powitanie po polsku – mowa z HA zawsze z językiem „pl” (wcześniej silnik czytał polski tekst angielskim głosem); wybór silnika TTS z listy, język i głos (np. HA Cloud ZofiaNeural, Piper pl_PL-gosia-medium).
+- Przycisk testu poczekalni pokazuje prawdziwą przyczynę błędu (brak silnika TTS, odpowiedź go2rtc).
+
 ## 1.0.3
 - Zegar na wygaszonym ekranie (aplikacja Wall Dashboard na Androida, tryb „czarny ekran”): osobno w trybie nocnym (okna godzinowe) i po wygaszeniu w dzień; opcjonalnie data, do 4 wartości z HA (np. temperatura na zewnątrz, alarm) i nieodebrane dzwonki. Przygaszony, co minutę lekko przesuwany (ochrona ekranu). Ustawienia: Tablety → Ekran i aplikacja → Zegar na wygaszonym ekranie. Wymaga aplikacji 0.1.3.
 

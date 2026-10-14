@@ -413,6 +413,9 @@ export interface IvrDef {
   greetingText?: string;
   goodbyeText?: string;
   tts?: string;
+  /** TTS language (default pl) and voice (engine specific, e.g. HA Cloud "ZofiaNeural", Piper "pl_PL-gosia-medium") */
+  ttsLanguage?: string;
+  ttsVoice?: string;
   /** go2rtc stream with the intercom speaker (default: the pop-up's go2rtc stream) */
   stream?: string;
   /** loudness in % (100 = file as is, up to 300) for the greeting / goodbye and for the music */

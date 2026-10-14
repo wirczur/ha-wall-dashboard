@@ -232,7 +232,14 @@ const IvrEditor: FC<{ t: TriggerDef; onChange(p: Partial<TriggerDef>): void }> =
           <SelectF label="Kodek audio" value={iv.codec ?? 'pcmu'} onChange={(v) => set({ codec: v as 'pcmu' })} options={[['pcmu', 'PCMU / G.711µ (Hikvision)'], ['pcma', 'PCMA / G.711a'], ['opus', 'Opus'], ['aac', 'AAC']]} />
         </div>
         <EntityF label="Odbierz połączenie w domofonie (opcjonalnie)" value={iv.answerEntity} domains={['button', 'script', 'switch', 'input_button']} onChange={(v) => set({ answerEntity: v })} hint="np. przycisk „Odbierz” z integracji domofonu albo skrypt wywołujący ISAPI – naciskany, gdy startuje poczekalnia" />
-        <TextF label="Silnik mowy (TTS)" value={iv.tts} onChange={(v) => set({ tts: v })} placeholder="pusto = pierwszy tts.* z HA, np. tts.google_translate_pl_pl" />
+        <label className="field"><span>Silnik mowy (TTS)</span>
+          <select value={iv.tts ?? ''} onChange={(e) => set({ tts: e.target.value || undefined })}>
+            <option value="">automatycznie (polski silnik, jeśli jest)</option>
+            {[...hass.states.keys()].filter((e) => e.startsWith('tts.')).map((e) => <option key={e} value={e}>{e}</option>)}
+          </select></label>
+        <TextF label="Język mowy" value={iv.ttsLanguage} onChange={(v) => set({ ttsLanguage: v })} placeholder="pl (domyślnie)" />
+        <TextF label="Głos (opcjonalnie)" value={iv.ttsVoice} onChange={(v) => set({ ttsVoice: v })} placeholder="HA Cloud: ZofiaNeural / MarekNeural, Piper: pl_PL-gosia-medium" />
+        <p className="muted small">Najlepiej po polsku brzmią: <b>Home Assistant Cloud</b> (głos ZofiaNeural lub MarekNeural) i <b>Piper</b> z polskim głosem (np. pl_PL-gosia-medium, pl_PL-darkman-medium). Google Translate czyta poprawnie tylko z językiem „pl”. Zamiast mowy możesz też nagrać własne powitanie (plik mp3) i wybrać je jako plik powitania.</p>
         <TextF label="Adres add-onu widziany z go2rtc" value={iv.base} onChange={(v) => set({ base: v })} placeholder="http://127.0.0.1:8099 – zmień, jeśli go2rtc działa w innym kontenerze (np. Frigate)" />
         <div className="row-btns">
           <button className="btn" disabled={!stream} onClick={() => test(iv.greetingText ? 'tts:' + iv.greetingText : iv.greeting)}>▶ Powitanie w domofonie</button>

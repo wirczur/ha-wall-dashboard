@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -20,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.3';
+const VERSION = '1.0.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -175,7 +176,7 @@ admin.disable('x-powered-by');
 admin.use((req, res, next) => {
   if (!IN_ADDON || process.env.ALLOW_ANY_ADMIN === '1') return next();
   // sound files for go2rtc (intercom waiting room) – same files the kiosk port serves without a key
-  if (req.method === 'GET' && /^\/(sounds\/[\w.-]+\.wav|media\/[\w.-]+\.(mp3|wav|ogg|m4a|aac))$/.test(req.path)) return next();
+  if (req.method === 'GET' && /^\/(sounds\/[\w.-]+\.wav|media\/[\w.-]+\.(mp3|wav|ogg|m4a|aac)|ivr-audio\/[\w-]+\.wav)$/.test(req.path)) return next();
   const ip = (req.socket.remoteAddress || '').replace('::ffff:', '');
   if (ip === INGRESS_IP || ip === '127.0.0.1') return next();
   res.status(403).send('Panel administracyjny jest dostępny tylko przez Home Assistant.');
@@ -1088,38 +1089,103 @@ function audioLength(src: string): number | undefined {
   return undefined;
 }
 /** Home Assistant TTS → URL of an mp3 that go2rtc can fetch */
-async function ttsUrl(text: string, engine?: string) {
+/**
+ * Polish speech from HA TTS. Without a language most engines speak with their default (often English) voice,
+ * which makes Polish text sound wrong – so the language is always sent (pl, then pl-PL, then the engine default).
+ */
+async function ttsUrl(text: string, engine?: string, language = 'pl', voice?: string) {
   const client = requireHa();
-  const eng = engine || [...client.states.keys()].find((e) => e.startsWith('tts.'));
+  const all = [...client.states.keys()].filter((e) => e.startsWith('tts.'));
+  const eng = engine || all.find((e) => /_pl(_|$)|polish|polsk/i.test(e)) || all[0];
   if (!eng) throw new Error('Brak silnika TTS w Home Assistant (encja tts.*)');
-  const r = await client.rest('/tts_get_url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine_id: eng, message: text }) });
-  if (!r.ok) throw new Error(`TTS: ${r.status} ${(await r.text().catch(() => '')).slice(0, 160)}`);
-  return String((await r.json()).url);
+  const langs = [...new Set([language, language.includes('-') ? language.split('-')[0] : `${language}-${language.toUpperCase()}`, ''])];
+  let last = '';
+  const tries = langs.flatMap((lang) => (voice ? [{ lang, voice }, { lang, voice: '' }] : [{ lang, voice: '' }]));
+  for (const { lang, voice: v } of tries) {
+    const body: Record<string, unknown> = { engine_id: eng, message: text };
+    if (lang) body.language = lang;
+    if (v) body.options = { voice: v };
+    const r = await client.rest('/tts_get_url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) return String((await r.json()).url);
+    last = `${r.status} ${(await r.text().catch(() => '')).slice(0, 160)}`;
+  }
+  throw new Error(`TTS (${eng}): ${last}`);
 }
 const ttsSeconds = (text: string) => 1.5 + text.length * 0.075;
-async function ivrPlay(a: ActiveCall, src: string, music = false) {
+// ------------------------------------------------------------ IVR sounds with changed loudness (FFmpeg in the add-on)
+const ivrAudio = new Map<string, { url: string; vol: number; at: number }>();
+setInterval(() => { const old = Date.now() - 30 * 60_000; for (const [k, v] of ivrAudio) if (v.at < old) ivrAudio.delete(k); }, 5 * 60_000).unref();
+/** PCM16 WAV in memory → same WAV with every sample multiplied (fallback without FFmpeg) */
+function scaleWav(buf: Buffer, gain: number): Buffer | null {
+  if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
+  let p = 12, fmtBits = 0, dataAt = -1, dataLen = 0;
+  while (p + 8 <= buf.length) {
+    const id = buf.toString('ascii', p, p + 4), len = buf.readUInt32LE(p + 4);
+    if (id === 'fmt ') fmtBits = buf.readUInt16LE(p + 8 + 14) * (buf.readUInt16LE(p + 8) === 1 ? 1 : 0);
+    if (id === 'data') { dataAt = p + 8; dataLen = Math.min(len, buf.length - dataAt); break; }
+    p += 8 + len + (len & 1);
+  }
+  if (fmtBits !== 16 || dataAt < 0) return null;
+  const out = Buffer.from(buf);
+  for (let i = dataAt; i + 1 < dataAt + dataLen; i += 2) out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(buf.readInt16LE(i) * gain))), i);
+  return out;
+}
+admin.get('/ivr-audio/:id.wav', async (req, res) => {
+  const e = ivrAudio.get(String(req.params.id));
+  if (!e) return res.status(404).end();
+  const gain = e.vol / 100;
+  const filter = `volume=${gain.toFixed(2)}${e.vol > 100 ? ',alimiter=limit=0.95' : ''}`;
+  res.type('audio/wav');
+  const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', e.url, '-vn', '-af', filter, '-ac', '1', '-ar', '16000', '-f', 'wav', '-']);
+  let spawned = false;
+  ff.on('spawn', () => { spawned = true; ff.stdout.pipe(res); });
+  ff.stderr.on('data', (d) => log.debug('IVR ffmpeg: ' + String(d).trim()));
+  req.on('close', () => { if (spawned) ff.kill('SIGKILL'); });
+  ff.on('error', async () => {
+    // no FFmpeg (e.g. outside the add-on image): WAV files are scaled here, others are played as they are
+    if (spawned) return;
+    try {
+      const r = await fetch(e.url, { signal: AbortSignal.timeout(8000) });
+      const raw = Buffer.from(await r.arrayBuffer());
+      res.end(scaleWav(raw, gain) ?? raw);
+    } catch (err: any) { log.warn('IVR głośność: ' + err.message); res.status(502).end(); }
+  });
+});
+
+/** plays on the intercom speaker; returns an error text (shown by the editor's test button) */
+async function ivrPlay(a: ActiveCall, src: string, music = false): Promise<string | undefined> {
   const iv = a.t.ivr!;
   if (src.startsWith('tts:')) {
-    try { src = await ttsUrl(src.slice(4), iv.tts) + '#.mp3'; } catch (e: any) { log.warn('IVR ' + e.message); return; }
+    try { src = await ttsUrl(src.slice(4), iv.tts, iv.ttsLanguage || 'pl', iv.ttsVoice) + '#.mp3'; } catch (e: any) { log.warn('IVR ' + e.message); return e.message; }
   }
   const stream = streamName(iv.stream || a.t.popup?.go2rtc?.stream || '');
-  if (!stream) { log.warn('IVR: brak strumienia go2rtc domofonu'); return; }
+  if (!stream) { log.warn('IVR: brak strumienia go2rtc domofonu'); return 'Brak strumienia go2rtc domofonu – ustaw go w pop-upie albo w poczekalni'; }
   const base = (iv.base || `http://127.0.0.1:${ADMIN_PORT}`).replace(/\/+$/, '');
   const file = src.endsWith('#.mp3');
   src = src.replace(/#\.mp3$/, '');
   const url = /^https?:\/\//.test(src) ? src : `${base}/${src.replace(/^\//, '')}`;
   const live = !file && /^https?:\/\//.test(src) && !/\.(mp3|wav|ogg|m4a|aac)(\?|$)/i.test(src);
-  const vol = (music ? iv.musicVolume : iv.volume) ?? 100;
-  // loudness via an FFmpeg audio filter (go2rtc #raw); dynaudnorm-free, simple gain + limiter against clipping
-  const gain = vol !== 100 ? `#raw=-af volume=${(Math.max(0, Math.min(300, vol)) / 100).toFixed(2)}${vol > 100 ? ',alimiter=limit=0.95' : ''}` : '';
-  const s = `ffmpeg:${url}#audio=${iv.codec || 'pcmu'}${live ? '' : '#input=file'}${gain}`;
+  const vol = Math.max(0, Math.min(300, (music ? iv.musicVolume : iv.volume) ?? 100));
+  const codec = iv.codec || 'pcmu';
+  // go2rtc refuses API sources containing spaces ("source with spaces may be insecure"), so an FFmpeg volume filter
+  // cannot go into the go2rtc source. For loudness ≠ 100 % the add-on serves the sound already turned up / down.
+  let playUrl = url;
+  if (vol !== 100 && !live) {
+    const id = crypto.randomBytes(8).toString('hex');
+    ivrAudio.set(id, { url, vol, at: Date.now() });
+    playUrl = `${base}/ivr-audio/${id}.wav`;
+  }
+  const s = `ffmpeg:${playUrl}#audio=${codec}${live ? '' : '#input=file'}`;
   a.ivr ??= { stream, playing: false };
   a.ivr.stream = stream;
   // one source at a time on the intercom speaker: stop the previous file first
   if (a.ivr.playing) await fetch(`${go2rtcBase()}/api/streams?dst=${encodeURIComponent(stream)}&src=`, { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => null);
   a.ivr.playing = true;
-  const r = await fetch(`${go2rtcBase()}/api/streams?dst=${encodeURIComponent(stream)}&src=${encodeURIComponent(s)}`, { method: 'POST', signal: AbortSignal.timeout(8000) }).catch((e) => { log.warn('IVR go2rtc: ' + e.message); return null; });
-  if (r && !r.ok) log.warn(`IVR go2rtc: ${r.status} ${(await r.text().catch(() => '')).slice(0, 200)}`);
+  let err: string | undefined;
+  const r = await fetch(`${go2rtcBase()}/api/streams?dst=${encodeURIComponent(stream)}&src=${encodeURIComponent(s)}`, { method: 'POST', signal: AbortSignal.timeout(8000) }).catch((e) => { err = 'go2rtc: ' + e.message; return null; });
+  if (r && !r.ok) err = `go2rtc: ${r.status} ${(await r.text().catch(() => '')).slice(0, 200)}`;
+  if (err) log.warn('IVR ' + err);
+  return err;
 }
 function ivrSchedule(a: ActiveCall) {
   const iv = a.t.ivr!;
@@ -1239,6 +1305,8 @@ function cleanTrigger(x: any): TriggerDef | null {
       after: isFinite(x.ivr.after) && x.ivr.after !== null ? Math.max(0, Math.min(120, Number(x.ivr.after))) : undefined,
       greeting: str(x.ivr.greeting, 500), music: str(x.ivr.music, 500), goodbye: str(x.ivr.goodbye, 500), stream: str(x.ivr.stream, 120),
       greetingText: str(x.ivr.greetingText, 400), goodbyeText: str(x.ivr.goodbyeText, 400), tts: /^tts\.\w+$/.test(String(x.ivr.tts ?? '')) ? String(x.ivr.tts) : undefined,
+      ttsLanguage: /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(String(x.ivr.ttsLanguage ?? '')) ? String(x.ivr.ttsLanguage) : undefined,
+      ttsVoice: /^[\w.\- ]{1,80}$/.test(String(x.ivr.ttsVoice ?? '')) ? String(x.ivr.ttsVoice).trim() : undefined,
       codec: ['pcmu', 'pcma', 'opus', 'aac'].includes(x.ivr.codec) ? x.ivr.codec : undefined,
       volume: isFinite(x.ivr.volume) && x.ivr.volume !== null ? Math.max(0, Math.min(300, Number(x.ivr.volume))) : undefined,
       musicVolume: isFinite(x.ivr.musicVolume) && x.ivr.musicVolume !== null ? Math.max(0, Math.min(300, Number(x.ivr.musicVolume))) : undefined,
@@ -1339,8 +1407,8 @@ api.post('/ivr/test', asyncH(async (req, res) => {
   const src = String(req.body?.play || t.ivr.greeting || (t.ivr.greetingText ? 'tts:' + t.ivr.greetingText : '') || t.ivr.music || '');
   if (req.body?.stop) { a.ivr = { stream: streamName(t.ivr.stream || t.popup?.go2rtc?.stream || ''), playing: true }; ivrStop(a); return res.json({ ok: true }); }
   if (!src) throw new Error('Wybierz powitanie albo muzykę');
-  await ivrPlay(a, src, src === t.ivr.music);
-  if (!a.ivr?.stream) throw new Error('Brak strumienia go2rtc domofonu – ustaw go w pop-upie albo w poczekalni');
+  const err = await ivrPlay(a, src, src === t.ivr.music);
+  if (err) throw new Error(err);
   res.json({ ok: true, stream: a.ivr?.stream, seconds: src.startsWith('tts:') ? undefined : audioLength(src) });
 }));
 api.put('/triggers', (req, res) => {
