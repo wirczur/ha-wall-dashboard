@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FC } from 'react';
 import { SoundSelect, Triggers } from './Triggers';
 import { SceneAutomation } from './SceneAutomation';
-import type { DashboardSummary, DeviceCmd, EntityInfo, PairRequest, SaverClock, ScreenDef, Settings, Tablet } from '../../../shared/types';
+import type { DashboardSummary, DeviceCmd, EntityInfo, PairRequest, SaverClock, ScreenDef, Settings, SipSettings, Tablet, TriggerDef } from '../../../shared/types';
 import { api } from '../lib/api';
 import { boot } from '../lib/boot';
 import { hass, useConnection } from '../lib/hass';
@@ -92,6 +92,90 @@ const Dashboards: FC<{ onEdit(id: string): void }> = ({ onEdit }) => {
   );
 };
 
+// ---------------------------------------------------------------- SIP PBX (VitalPBX / Asterisk)
+const SipCard: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSettings }) => {
+  const cur = info.settings.sip;
+  const [f, setF] = useState<SipSettings>(cur ?? { ws: '' });
+  const [triggers, setTriggers] = useState<TriggerDef[]>([]);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { api.get<TriggerDef[]>('triggers').then(setTriggers).catch(() => {}); }, []);
+  const set = (p: Partial<SipSettings>) => setF((x) => ({ ...x, ...p }));
+  const doors = f.doors ?? [];
+  const save = async (patch: Partial<SipSettings> = {}) => {
+    try { const s = await api.put<Settings>('settings/sip', { ...f, ...patch }); onSettings(s); setF(s.sip ?? { ws: '' }); setMsg('Zapisano.'); }
+    catch (e: any) { setMsg(e.message); }
+  };
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>Dzwonek z furtki</h3>
+      <label className="field"><span>Sposób obsługi połączeń</span>
+        <select value={f.enabled ? 'sip' : 'old'} onChange={(e) => { const on = e.target.value === 'sip'; set({ enabled: on }); if (!on || f.ws) void save({ enabled: on }); }}>
+          <option value="old">Po staremu – wyzwalacz z HA, obraz i rozmowa przez go2rtc, poczekalnia add-onu</option>
+          <option value="sip">Przez centralę SIP (VitalPBX / Asterisk) – panele i telefony jako numery wewnętrzne</option>
+        </select>
+      </label>
+      {f.enabled && <>
+        <div className="ins-grid2">
+          <label className="field"><span>Adres WebSocket centrali (z add-onu)</span>
+            <input value={f.ws} placeholder="ws://192.168.1.20:8088/ws" onChange={(e) => set({ ws: e.target.value })} />
+            <small className="muted">VitalPBX / Asterisk: ws://IP:8088/ws albo wss://IP:8089/ws. Panele łączą się przez add-on, głos idzie bezpośrednio panel ⇄ centrala.</small></label>
+          <label className="field"><span>Domena SIP (opcjonalnie)</span>
+            <input value={f.domain ?? ''} placeholder="domyślnie adres centrali" onChange={(e) => set({ domain: e.target.value || undefined })} /></label>
+        </div>
+        <div className="ins-grid2">
+          <label className="field"><span>Kod przechwycenia połączenia</span>
+            <input value={f.pickup ?? ''} placeholder="np. *8" onChange={(e) => set({ pickup: e.target.value || undefined })} />
+            <small className="muted">Telefon otwarty z powiadomienia przejmuje dzwonek tym kodem (VitalPBX: Feature Codes → Call Pickup).</small></label>
+          <label className="check" style={{ alignSelf: 'center' }}>
+            <input type="checkbox" checked={!!f.tlsVerify} onChange={(e) => set({ tlsVerify: e.target.checked })} />
+            Sprawdzaj certyfikat centrali (wss://)
+          </label>
+        </div>
+        <fieldset className="field"><legend>Furtki (numer SIP → pop-up wyzwalacza: kamera, „Otwórz”, historia)</legend>
+          {doors.map((d, i) => (
+            <div key={i} className="row-btns">
+              <input style={{ maxWidth: 140 }} value={d.number} placeholder="numer furtki, np. 100" onChange={(e) => set({ doors: doors.map((x, j) => (j === i ? { ...x, number: e.target.value } : x)) })} />
+              <select value={d.trigger} onChange={(e) => set({ doors: doors.map((x, j) => (j === i ? { ...x, trigger: e.target.value } : x)) })}>
+                <option value="">— wybierz wyzwalacz —</option>
+                {triggers.filter((t) => t.action !== 'wake').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button className="btn" onClick={() => set({ doors: doors.filter((_, j) => j !== i) })} aria-label="Usuń"><Icon name="close" size={16} /></button>
+            </div>
+          ))}
+          <button className="btn" onClick={() => set({ doors: [...doors, { number: '', trigger: '' }] })}><Icon name="plus" size={16} />Dodaj furtkę</button>
+          <small className="muted">Gdy SIP jest włączony, wyzwalacz tej furtki nie otwiera już pop-upu z HA (zrobi to połączenie SIP), a poczekalnia add-onu nie działa – ustaw ją w centrali (IVR + muzyka + grupa dzwonienia).</small>
+        </fieldset>
+        <div className="row-btns"><button className="btn primary" onClick={() => save()}>Zapisz</button>{msg && <span className="muted small">{msg}</span>}</div>
+        <p className="muted small">Numer SIP i hasło każdego panelu / telefonu ustawiasz niżej, w jego karcie. Mikrofon wymaga HTTPS kiosku.</p>
+      </>}
+    </div>
+  );
+};
+
+/** SIP account of one tablet / phone */
+const TabletSip: FC<{ t: Tablet; onSave(p: Partial<Tablet>): void }> = ({ t, onSave }) => {
+  const [ext, setExt] = useState(t.sip?.ext ?? '');
+  const [pw, setPw] = useState(t.sip?.password ?? '');
+  const [notify, setNotify] = useState(t.notify ?? '');
+  // the HA app registers device trackers as device_tracker.<name>; its notify service is notify.mobile_app_<name>
+  const notifiers = [...hass.states.keys()].filter((k) => k.startsWith('device_tracker.')).map((k) => 'notify.mobile_app_' + k.slice(15));
+  return (
+    <fieldset className="field"><legend>Centrala SIP – {t.name}</legend>
+      <div className="ins-grid2">
+        <label className="field"><span>Numer wewnętrzny</span><input value={ext} placeholder="np. 201" onChange={(e) => setExt(e.target.value)} /></label>
+        <label className="field"><span>Hasło (secret)</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></label>
+      </div>
+      {t.phone && <label className="field"><span>Powiadomienie o dzwonku (aplikacja HA na telefonie)</span>
+        <input list={'nf-' + t.id} value={notify} placeholder="notify.mobile_app_iphone" onChange={(e) => setNotify(e.target.value)} />
+        <datalist id={'nf-' + t.id}>{notifiers.map((n) => <option key={n} value={n} />)}</datalist>
+        <small className="muted">Push otwiera link tego telefonu; „Odbierz” przejmuje połączenie kodem przechwycenia.</small></label>}
+      <div className="row-btns">
+        <button className="btn" onClick={() => onSave({ sip: ext.trim() ? { ext: ext.trim(), password: pw } : undefined, ...(t.phone ? { notify: notify.trim() || undefined } : {}) })}>Zapisz SIP</button>
+      </div>
+    </fieldset>
+  );
+};
+
 // ---------------------------------------------------------------- tablets
 const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSettings }) => {
   const [tablets, setTablets] = useState<Tablet[]>([]);
@@ -145,6 +229,7 @@ const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSe
           <small className="muted">{g2msg || 'Adres widziany z add-onu (nie z tabletu), port API 1984 – nie rtsp://…:8554. Puste = http://127.0.0.1:1984 (dodatek go2rtc na tym samym HA). Tablety łączą się przez add-on, więc działa też przez HTTPS.'}</small>
         </label>
       </div>
+      <SipCard info={info} onSettings={onSettings} />
       <PairCard tablets={tablets} onDone={load} />
       <BackupCard />
       <div className="cards">
@@ -228,6 +313,7 @@ const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSe
               <SoundSelect label="Dzwonek przychodzący" value={t.intercomRing} none="— domyślny (dwutonowy) —" onChange={(v) => save(t, { intercomRing: v })} />
               <SoundSelect label="Muzyka oczekiwania (gdy ten panel dzwoni)" value={t.intercomHold} none="— sygnał oczekiwania —" onChange={(v) => save(t, { intercomHold: v })} />
             </fieldset>}
+            {info.settings.sip?.enabled && <TabletSip t={t} onSave={(p) => save(t, p)} />}
             <AppSettings t={t} onSave={(p) => save(t, p)} />
             <label className="field"><span>Link dla tabletu</span>
               <input readOnly value={link(t)} onFocus={(e) => e.target.select()} />

@@ -12,8 +12,9 @@ import { PopupHost } from './Popup';
 import { QuietBadge } from './QuietBadge';
 import { IntercomHost } from '../widgets/intercom';
 import { useIntercom, type IcConfig } from '../lib/intercom';
+import { sip, useSip, type SipConfig } from '../lib/sip';
 
-interface KioskData { tablet: { id: string; name: string; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
+interface KioskData { tablet: { id: string; name: string; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
 
 /** Tablet mode: shows the assigned dashboard, no settings. */
 export const KioskApp: FC = () => {
@@ -27,6 +28,7 @@ export const KioskApp: FC = () => {
       document.documentElement.dataset.layout = d.tablet.layout ?? 'auto';
       configureApp({ tablet: d.tablet.name, screen: d.tablet.screen, pin: d.tablet.appPin });
       setHouses(d.houses || []); setTvs(d.tvs || []); setData(d); setError('');
+      sip.start(d.sip);
       setCurrent((c) => (d.dashboards.some((x) => x.id === c) ? c : d.dashboards[0]?.id || ''));
     }).catch((e) => setError(e.message));
   }, []);
@@ -47,7 +49,8 @@ export const KioskApp: FC = () => {
 
   // during a call the dashboard behind is unmounted (cameras, 3D, animations stop) – a weak panel (PX30) needs the CPU for audio
   const ic = useIntercom().phase;
-  const paused = !!data && (ic === 'connecting' || ic === 'active' || (!!data.tablet.lite && (ic === 'incoming' || ic === 'outgoing')));
+  const sp = useSip();
+  const paused = !!data && (ic === 'connecting' || ic === 'active' || sp.inCall || (!!data.tablet.lite && (ic === 'incoming' || ic === 'outgoing' || sp.ringing)));
   useEffect(() => { document.documentElement.dataset.call = paused ? '1' : '0'; }, [paused]);
   if (!boot.key) return <Message title="Nieprawidłowy klucz tabletu" text="Ten link nie jest (lub już nie jest) przypisany do żadnego tabletu. Skopiuj aktualny link z panelu Wall Dashboard w Home Assistant." />;
   if (error && !data) return <Message title="Nie udało się wczytać dashboardu" text={error} />;

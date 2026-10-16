@@ -340,6 +340,10 @@ export interface Tablet {
   appPin?: string;
   /** Wall Dashboard Android app: device model reported when paired */
   appModel?: string;
+  /** SIP account of this panel / phone on the PBX (extension + secret); used when the PBX is set up */
+  sip?: { ext: string; password: string };
+  /** phones: HA notification service (notify.mobile_app_…) – a SIP call from a door sends a push that opens this link */
+  notify?: string;
   /** intercom between panels (voice); false = this tablet can neither call nor be called */
   intercom?: boolean;
   /** answer intercom calls automatically: 'on' = talk both ways, 'listen' = this panel's microphone starts muted */
@@ -364,6 +368,23 @@ export interface Settings {
   kioskBase: string;
   /** go2rtc API reachable from the add-on (server side), default http://127.0.0.1:1984 */
   go2rtcUrl?: string;
+  /** SIP PBX (VitalPBX / Asterisk): panels and phones register to it through the add-on */
+  sip?: SipSettings;
+}
+
+/** SIP PBX. Signalling goes tablet → add-on (WebSocket proxy) → PBX; voice goes directly tablet ⇄ PBX (WebRTC). */
+export interface SipSettings {
+  enabled?: boolean;
+  /** PBX SIP WebSocket as reached from the add-on, e.g. ws://192.168.1.20:8088/ws or wss://pbx.lan:8089/ws */
+  ws: string;
+  /** SIP domain (default: host of the PBX address) */
+  domain?: string;
+  /** check the PBX TLS certificate (wss://); off by default – a LAN PBX usually has a self-signed one */
+  tlsVerify?: boolean;
+  /** feature code that takes over a call ringing elsewhere – for phones opened from the push notification (e.g. *8) */
+  pickup?: string;
+  /** callers (door stations): SIP number → trigger whose pop-up (camera, open button, call log) is shown */
+  doors?: { number: string; trigger: string }[];
 }
 
 export interface StoreData {
@@ -498,6 +519,8 @@ export interface PopupDef {
   /** what the tablet does when the pop-up arrives (Fully Kiosk Browser JS interface) */
   wake?: WakeOptions;
   /** big "open the gate" button: lock (unlock/open), button (press), switch / script (turn_on), cover (open) */
+  /** set by the add-on: a SIP call rings on this panel ("Odbierz" answers it); 'pickup' = take over a call ringing elsewhere */
+  sip?: 'ring' | 'pickup';
   open?: { entity: string; label?: string; /** hold ~1 s to open (default true) */ hold?: boolean; /** close the pop-up N s after opening (default 5, 0 = keep) */ closeAfter?: number };
   /** "reject" button: closes the pop-up on all tablets; optionally presses an entity (e.g. intercom hang-up) */
   reject?: { entity?: string; label?: string; /** close on every tablet (default true) */ everywhere?: boolean };

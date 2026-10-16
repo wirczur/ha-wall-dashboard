@@ -3,6 +3,7 @@ import type { PopupDef } from '../../../shared/types';
 import { hass } from '../lib/hass';
 import { setEntityValue } from '../lib/setValue';
 import { stopTabletSound, wakeTablet } from '../lib/fully';
+import { sip, useSip } from '../lib/sip';
 import { Icon } from '../ui/Icon';
 import { PanelRowView } from '../view/PanelRows';
 import { CameraView } from '../widgets/widgets';
@@ -15,7 +16,15 @@ export const PopupHost: FC = () => {
   const [toast, setToast] = useState('');
 
   useEffect(() => hass.onPopup((p, closeId) => {
-    if (!p) { setPopup((cur) => (!closeId || cur?.id === closeId ? null : cur)); return; }
+    if (!p) {
+      setPopup((cur) => {
+        if (closeId && cur?.id !== closeId) return cur;
+        // rejected on another panel / the call is over: stop ringing here too (the PBX moves on)
+        if (cur?.sip && sip.state.ringing) sip.hangup(true);
+        return null;
+      });
+      return;
+    }
     // wake the panel (Fully Kiosk Browser JS interface, if enabled)
     wakeTablet(p.wake ?? { screen: true });
     setPopup(p); setLeft(p.timeout ?? 60);
@@ -52,6 +61,19 @@ export const PopupView: FC<{ popup: PopupDef; left: number; setLeft(f: (s: numbe
     close(popup.reject?.everywhere !== false);
   };
   const rows = (popup.rows ?? []).filter((r) => r.entity !== popup.open?.entity);
+  const sp = useSip();
+  const wasCall = useRef(false);
+  // the SIP call ended (other side hung up, answered elsewhere) → close the pop-up
+  useEffect(() => {
+    if (!popup.sip) return;
+    if (sp.inCall) { wasCall.current = true; return; }
+    if (wasCall.current && !sp.ringing) { wasCall.current = false; onClose(); }
+  }, [popup.sip, sp.inCall, sp.ringing]);
+  const sipAnswer = () => {
+    stopTabletSound();
+    if (sip.answer()) report('answer'); else setToast(sp.phase === 'ready' ? 'To połączenie już nie dzwoni' : 'Brak połączenia z centralą SIP');
+  };
+  const sipReject = () => { sip.hangup(true); reject(); };
   return (
     <div className="popup-scrim" onClick={(e) => { if (e.target === e.currentTarget) setPopup(null); }}>
       <section className="popup" role="dialog" aria-modal="true" aria-label={popup.title || 'Powiadomienie'}>
@@ -65,9 +87,18 @@ export const PopupView: FC<{ popup: PopupDef; left: number; setLeft(f: (s: numbe
         {(popup.camera || popup.go2rtc?.stream) && (
           <div className="popup-cam"><CameraView entity={popup.camera ?? ''} talk={popup.talk} onTalk={(on) => on && report('answer')} go2rtc={popup.go2rtc} /></div>
         )}
-        {(popup.open || popup.reject) && (
+        {popup.sip && (
           <div className="popup-acts">
-            {popup.reject && <button className="pa-b reject" onClick={reject}><Icon name="mdi:phone-hangup" size={24} /><span>{popup.reject.label || 'Odrzuć'}</span></button>}
+            {!sp.inCall && <button className="pa-b answer" onClick={sipAnswer}><Icon name="mdi:phone" size={24} /><span>Odbierz</span></button>}
+            {sp.inCall && <button className="pa-b mute" aria-pressed={sp.muted} onClick={() => sip.mute(!sp.muted)}><Icon name={sp.muted ? 'mdi:microphone-off' : 'mdi:microphone'} size={24} /><span>{sp.muted ? 'Włącz mikrofon' : 'Wycisz'}</span></button>}
+            {sp.inCall
+              ? <button className="pa-b reject" onClick={() => { sip.hangup(); onClose(); }}><Icon name="mdi:phone-hangup" size={24} /><span>Rozłącz</span></button>
+              : <button className="pa-b reject" onClick={sipReject}><Icon name="mdi:phone-hangup" size={24} /><span>{popup.reject?.label || 'Odrzuć'}</span></button>}
+          </div>
+        )}
+        {(popup.open || (popup.reject && !popup.sip)) && (
+          <div className="popup-acts">
+            {popup.reject && !popup.sip && <button className="pa-b reject" onClick={reject}><Icon name="mdi:phone-hangup" size={24} /><span>{popup.reject.label || 'Odrzuć'}</span></button>}
             {popup.open && <OpenButton def={popup.open} onError={setToast} onOpened={(after) => { report('open'); if (after > 0) setTimeout(() => onClose(), after * 1000); }} />}
           </div>
         )}

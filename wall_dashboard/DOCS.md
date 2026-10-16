@@ -285,3 +285,28 @@ data:
     command: saver             # reload | restart | screen-on | screen-off | saver | brightness
     value: 40                  # tylko brightness (0–100)
 ```
+
+## Dzwonek z furtki przez centralę SIP (VitalPBX / Asterisk)
+
+Tablety → **Dzwonek z furtki** → „Sposób obsługi połączeń”:
+- **Po staremu** – wyzwalacz z HA otwiera pop-up, obraz i rozmowa przez go2rtc, poczekalnia add-onu (IVR).
+- **Przez centralę SIP** – furtka dzwoni do centrali, centrala odbiera, gra powitanie i muzykę i jednocześnie dzwoni do paneli i telefonów (numery wewnętrzne). Add-on przekazuje sygnalizację SIP (panel → add-on → centrala), głos idzie bezpośrednio panel ⇄ centrala (WebRTC). Obraz w pop-upie nadal z go2rtc.
+
+Przełączenie w każdej chwili w obie strony – ustawienia SIP zostają zapisane.
+
+### Centrala (VitalPBX)
+1. **WebSocket SIP**: centrala musi nasłuchiwać SIP przez WebSocket (Asterisk: `ws://IP:8088/ws`, szyfrowane `wss://IP:8089/ws`).
+2. **Numer furtki** (np. 100): zwykłe konto SIP (UDP). W panelu www furtki Hikvision włącz SIP, zarejestruj ją tym kontem i ustaw numer wywoływany = numer grupy dzwonienia (np. 600).
+3. **Numery paneli i telefonów** (np. 201, 202…): konta z profilem **WebRTC** (DTLS-SRTP, ICE, rtcp-mux, transport WS/WSS).
+4. **Grupa dzwonienia** (np. 600): wszystkie panele i telefony, dzwonią jednocześnie, czas 60 s; przed dzwonieniem komunikat powitalny, zamiast sygnału – muzyka oczekiwania; gdy nikt nie odbierze: komunikat pożegnalny i rozłączenie.
+5. **Przechwytywanie połączeń**: panele i telefony w tej samej grupie przechwytywania (pickup group), kod z „Feature Codes” (często `*8`).
+
+### Wall Dashboard
+1. Tablety → Dzwonek z furtki → **Przez centralę SIP**: adres WebSocket centrali (widziany z add-onu), kod przechwycenia, **Furtki**: numer furtki (100) → wyzwalacz, którego pop-up ma się pokazać (kamera go2rtc, „Otwórz furtkę”, historia dzwonków).
+2. W karcie każdego tabletu: **numer wewnętrzny i hasło**. Telefony (zaznaczone jako „Telefon / iPad”): dodatkowo **powiadomienie** `notify.mobile_app_…`.
+3. **Adres kiosku** ustaw na adres https (opcja „ssl” add-onu) – mikrofon w przeglądarce wymaga HTTPS, a powiadomienie otwiera ten adres.
+
+### Jak to działa
+- Panel z kontem SIP rejestruje się w centrali po otwarciu dashboardu; dzwonek otwiera pop-up z **Odbierz / Odrzuć / Otwórz furtkę**, w rozmowie **Wycisz / Rozłącz**. „Odrzuć” odrzuca dzwonek na wszystkich panelach (centrala przechodzi do pożegnania).
+- Telefon dostaje push z aplikacji HA; stuknięcie otwiera Wall Dashboard, a „Odbierz” przejmuje dzwoniące połączenie kodem przechwycenia.
+- Gdy SIP jest włączony, wyzwalacz z HA tej furtki nie otwiera pop-upu (robi to połączenie), a poczekalnia add-onu nie działa – jest w centrali.

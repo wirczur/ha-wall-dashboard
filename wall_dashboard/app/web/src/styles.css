@@ -976,6 +976,9 @@ html[data-lite="1"] .fx { display: none; }
 .pa-b > * { position: relative; z-index: 1; }
 .pa-b small { position: absolute; bottom: 7px; left: 0; right: 0; text-align: center; font-size: 11px; font-weight: 600; opacity: .8; }
 .pa-b.reject { background: #C9363B; }
+.pa-b.answer { background: #2E9E5B; }
+.pa-b.mute { background: rgba(var(--ink), .18); color: var(--fg); }
+.pa-b.mute[aria-pressed="true"] { background: #E3A21F; color: #111; }
 .pa-b.open { background: #2E8B57; }
 .pa-b.open .pa-fill { position: absolute; inset: 0; z-index: 0; background: rgba(255, 255, 255, .28); transform-origin: left; transform: scaleX(0); }
 .pa-b.open.holding .pa-fill { transform: scaleX(1); transition: transform .9s linear; }

@@ -27,6 +27,7 @@
     "@types/ws": "8.5.12",
     "@vitejs/plugin-react": "4.3.2",
     "hls.js": "^1.5.17",
+    "jssip": "^3.13.8",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "three": "^0.169.0",

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientCall, ClientMsg, DashboardDoc, DeviceCmd, PairRequest, ScreenDef, CallRecord, EntityInfo, IcEndReason, IvrDef, PopupDef, QuietDef, QuietState, Tablet, ServerMsg, TriggerDef, TvApp, TvDef, WakeOptions } from '../shared/types.js';
+import type { SipSettings, ClientCall, ClientMsg, DashboardDoc, DeviceCmd, PairRequest, ScreenDef, CallRecord, EntityInfo, IcEndReason, IvrDef, PopupDef, QuietDef, QuietState, Tablet, ServerMsg, TriggerDef, TvApp, TvDef, WakeOptions } from '../shared/types.js';
 import { ENTITY_RE } from '../shared/types.js';
 import { HaClient } from './ha.js';
 import { log } from './log.js';
@@ -18,10 +18,11 @@ import { DATA_DIR, MEDIA_DIR, Store, newId, newKey } from './store.js';
 import { validateDashboard } from './validate.js';
 import { importHouse, validateHouse } from './houses.js';
 import { TvRegistry } from './samsung.js';
+import { sipLinks, sipProxy, type SipMsg } from './sip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.0.9';
+const VERSION = '1.1.0';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -225,9 +226,29 @@ api.put('/settings', (req, res) => {
   if (go2 && !/^https?:\/\/[\w.\-\[\]:]+(\/.*)?$/.test(go2)) return res.status(400).json({ error: 'Adres go2rtc musi zaczynać się od http:// lub https://' });
   store.data.settings = {
     kioskBase: String(req.body?.kioskBase ?? store.data.settings.kioskBase ?? '').trim().replace(/\/+$/, ''),
-    ...(go2 ? { go2rtcUrl: go2 } : {})
+    ...(go2 ? { go2rtcUrl: go2 } : {}),
+    ...(store.data.settings.sip ? { sip: store.data.settings.sip } : {})
   };
   store.write(); res.json(store.data.settings);
+});
+api.put('/settings/sip', (req, res) => {
+  const b = req.body ?? {};
+  const ws = String(b.ws ?? '').trim();
+  if (b.enabled && !/^wss?:\/\/[\w.\-\[\]:]+(\/.*)?$/.test(ws)) return res.status(400).json({ error: 'Adres centrali musi zaczynać się od ws:// lub wss:// (np. ws://192.168.1.20:8088/ws)' });
+  const num = (v: unknown) => String(v ?? '').trim().slice(0, 40);
+  const sip: SipSettings = {
+    enabled: !!b.enabled || undefined, ws,
+    domain: /^[\w.\-]{1,120}$/.test(String(b.domain ?? '')) ? String(b.domain) : undefined,
+    tlsVerify: !!b.tlsVerify || undefined,
+    pickup: /^[\d*#]{1,10}$/.test(String(b.pickup ?? '')) ? String(b.pickup) : undefined,
+    doors: Array.isArray(b.doors) ? b.doors.map((d: any) => ({ number: num(d?.number), trigger: String(d?.trigger ?? '') }))
+      .filter((d: { number: string; trigger: string }) => /^[\w.+*#-]+$/.test(d.number) && (store.data.triggers ?? []).some((t) => t.id === d.trigger)).slice(0, 10) : undefined
+  };
+  store.data.settings.sip = sip; store.write();
+  // panels pick up the new PBX settings with the reloaded kiosk data
+  for (const c of clients) if (c.mode === 'kiosk') send(c, { type: 'dashboards-changed', ids: [] });
+  log.info(`SIP: ${sip.enabled ? 'włączony – ' + sip.ws : 'wyłączony (dzwonek po staremu)'}`);
+  res.json(store.data.settings);
 });
 
 // ---- go2rtc relay: the browser talks only to the add-on (same origin, works over HTTPS),
@@ -399,11 +420,17 @@ api.put('/tablets/:id', (req, res) => {
   if ('intercomAuto' in (req.body ?? {})) t.intercomAuto = ['on', 'listen'].includes(req.body.intercomAuto) ? req.body.intercomAuto : undefined;
   if ('intercomAutoDelay' in (req.body ?? {})) t.intercomAutoDelay = isFinite(req.body.intercomAutoDelay) && req.body.intercomAutoDelay !== null ? Math.max(0, Math.min(30, Number(req.body.intercomAutoDelay))) : undefined;
   for (const k of ['intercomRing', 'intercomHold'] as const) if (k in (req.body ?? {})) t[k] = typeof req.body[k] === 'string' && req.body[k].trim() ? String(req.body[k]).trim().slice(0, 500) : undefined;
+  if ('sip' in (req.body ?? {})) {
+    const x = req.body.sip;
+    t.sip = x && typeof x === 'object' && /^[\w.+-]{1,40}$/.test(String(x.ext ?? '')) && typeof x.password === 'string' && x.password.length <= 120
+      ? { ext: String(x.ext), password: x.password } : undefined;
+  }
+  if ('notify' in (req.body ?? {})) t.notify = /^notify\.\w+$/.test(String(req.body.notify ?? '')) ? String(req.body.notify) : undefined;
   if ('screen' in (req.body ?? {})) t.screen = cleanScreen(req.body.screen);
   if ('appPin' in (req.body ?? {})) t.appPin = typeof req.body.appPin === 'string' && /^\d{4,8}$/.test(req.body.appPin) ? req.body.appPin : undefined;
   store.write(); refreshKioskScopes();
   // the app on the panel takes the new screen / PIN settings with the reloaded kiosk data
-  if ('screen' in (req.body ?? {}) || 'appPin' in (req.body ?? {})) for (const c of clients) if (c.mode === 'kiosk' && c.tabletId === t.id) send(c, { type: 'dashboards-changed', ids: [] });
+  if ('screen' in (req.body ?? {}) || 'appPin' in (req.body ?? {}) || 'sip' in (req.body ?? {})) for (const c of clients) if (c.mode === 'kiosk' && c.tabletId === t.id) send(c, { type: 'dashboards-changed', ids: [] });
   res.json(t);
 });
 
@@ -598,6 +625,7 @@ kapi.get('/kiosk', (req, res) => {
   const { tablet, scope } = kioskAuth(req);
   res.json({
     tablet: { id: tablet.id, name: tablet.name, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold } },
+    sip: sipFor(tablet),
     dashboards: scope.dashboards.map((id) => store.get(id)),
     houses: scope.houses.map((id) => store.data.houses[id]),
     tvs: [
@@ -757,6 +785,14 @@ function attachWs(server: http.Server, mode: 'admin' | 'kiosk') {
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url || '/', 'http://x');
     if (url.pathname.endsWith('/api/go2rtc/ws')) return go2rtcWsProxy(req, socket, head, mode, url);
+    if (url.pathname.endsWith('/api/sip/ws')) {
+      const t = mode === 'kiosk' ? store.tabletByKey(url.searchParams.get('k') || '') : undefined;
+      const cfg = store.data.settings.sip;
+      if (!t?.sip || !cfg?.enabled || !cfg.ws) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); return socket.destroy(); }
+      sipProxy(req, socket, head, cfg, sipLinkFor(t));
+      setTimeout(() => sipOfferPickup(t), 300);
+      return;
+    }
     if (!url.pathname.endsWith('/ws')) return socket.destroy();
     let client: Omit<Client, 'ws'>;
     if (mode === 'admin') {
@@ -925,6 +961,8 @@ const trgId = (t: TriggerDef) => 'trg-' + t.id;
 function fireTrigger(t: TriggerDef, test = false): number {
   lastFired.set(t.id, Date.now());
   if (t.action === 'wake') return sendWake(t.tablets ?? [], t.wake ?? {});
+  // the door rings through the PBX: the SIP call opens the pop-up (and the call log) – not the HA entity
+  if (!test && sipDoorOf(t) && sipLinks.size) { log.debug(`Wyzwalacz „${t.name}” pominięty – dzwonek idzie przez SIP`); return 0; }
   log.info(`Wyzwalacz „${t.name}”${test ? ' (test)' : ''}`);
   const n = sendPopup({ timeout: 60, ...(t.popup ?? {}), ...(t.ivr?.hangupAfter ? { timeout: t.ivr.hangupAfter } : {}), id: trgId(t), tablets: t.tablets ?? [], wake: t.wake ?? { screen: true } });
   if (!test || t.ivr) callStart(t, test);
@@ -1032,7 +1070,7 @@ async function callSnapshot(rec: CallRecord, p: PopupDef) {
     rec.snapshot = true; callSave(rec);
   } catch (e: any) { log.debug('Zdjęcie dzwoniącego niedostępne', e.message); }
 }
-function callStart(t: TriggerDef, test: boolean) {
+function callStart(t: TriggerDef, test: boolean, sip = false) {
   const id = trgId(t);
   const prev = activeCalls.get(id);
   if (prev) { clearTimeout(prev.timer); ivrStop(prev); activeCalls.delete(id); }
@@ -1041,7 +1079,7 @@ function callStart(t: TriggerDef, test: boolean) {
   const a: ActiveCall = { rec, t, test, timer: setTimeout(() => callEnd(id), timeout * 1000) };
   activeCalls.set(id, a);
   if (!test && t.log !== false) { callSave(rec); void callSnapshot(rec, t.popup ?? {}); }
-  if (t.ivr && (t.ivr.music || t.ivr.greeting || t.ivr.greetingText)) ivrSchedule(a);
+  if (!sip && t.ivr && (t.ivr.music || t.ivr.greeting || t.ivr.greetingText)) ivrSchedule(a);
 }
 function callEvent(popupId: string, ev: 'answer' | 'open' | 'reject', by?: string) {
   const a = activeCalls.get(popupId);
@@ -1310,6 +1348,113 @@ function ivrStop(a: ActiveCall, silence = true) {
     a.ivr.playing = false;
   }
 }
+
+// ---------------------------------------------------------------- SIP calls (PBX → panels): pop-up, call log, push to phones
+interface SipCall { from: string; name: string; trigger?: TriggerDef; popupId: string; legs: Map<string, string>; answered?: string; at: number; end?: ReturnType<typeof setTimeout> }
+const sipCalls = new Map<string, SipCall>();
+const sipCfg = () => (store.data.settings.sip?.enabled && store.data.settings.sip.ws ? store.data.settings.sip : undefined);
+const sipDomain = (cfg: SipSettings) => cfg.domain || (() => { try { return new URL(cfg.ws).hostname; } catch { return ''; } })();
+function sipFor(t: Tablet) {
+  const cfg = sipCfg();
+  if (!cfg || !t.sip?.ext) return undefined;
+  return { uri: `sip:${t.sip.ext}@${sipDomain(cfg)}`, password: t.sip.password, ext: t.sip.ext, pickup: cfg.pickup };
+}
+/** door mapping of a trigger (when the PBX mode is on) */
+const sipDoorOf = (t: TriggerDef) => (sipCfg()?.doors ?? []).find((d) => d.trigger === t.id);
+function sipPopup(call: SipCall, mode: 'ring' | 'pickup'): PopupDef {
+  const t = call.trigger;
+  return { ...(t?.popup ?? { reject: { everywhere: true } }), timeout: 0, title: t?.popup?.title || call.name || call.from, ...(t ? {} : { subtitle: 'Połączenie SIP' }),
+    talk: false, id: call.popupId, sip: mode, wake: mode === 'ring' ? (t?.wake ?? { screen: true }) : { screen: true } };
+}
+const kioskClientsOf = (tabletId: string) => [...clients].filter((c) => c.mode === 'kiosk' && c.tabletId === tabletId);
+function sipPhones() { return store.data.tablets.filter((t) => t.phone && t.notify && t.sip?.ext); }
+function sipPush(call: SipCall, clear = false) {
+  if (!ha) return;
+  for (const t of sipPhones()) {
+    const [, svc] = t.notify!.split('.');
+    const base = store.data.settings.kioskBase;
+    const url = base ? `${base}/?k=${encodeURIComponent(t.key)}` : undefined;
+    const data = clear ? { tag: 'wall-dashboard-sip' }
+      : { tag: 'wall-dashboard-sip', group: 'wall-dashboard-sip', ttl: 0, priority: 'high', channel: 'Dzwonek', importance: 'high',
+          push: { 'interruption-level': 'time-sensitive' }, ...(url ? { url, clickAction: url } : {}) };
+    ha.callService('notify', svc, clear ? { message: 'clear_notification', data } : { title: call.name || call.from, message: 'Ktoś dzwoni – dotknij, aby odebrać', data })
+      .catch((e: Error) => log.warn(`SIP push ${t.notify}: ${e.message}`));
+  }
+}
+function sipRing(tabletId: string, m: SipMsg) {
+  const from = m.fromUser || 'nieznany';
+  let call = sipCalls.get(from);
+  if (call?.end) { clearTimeout(call.end); call.end = undefined; }
+  if (!call) {
+    const door = (sipCfg()?.doors ?? []).find((d) => d.number === from);
+    const trigger = door ? (store.data.triggers ?? []).find((x) => x.id === door.trigger) : undefined;
+    call = { from, name: m.fromName || trigger?.name || from, trigger, popupId: trigger ? trgId(trigger) : 'sip-' + from.replace(/\W/g, ''), legs: new Map(), at: Date.now() };
+    sipCalls.set(from, call);
+    log.info(`SIP: dzwoni ${call.name}${trigger ? ` (wyzwalacz „${trigger.name}”)` : ''}`);
+    if (trigger) { lastFired.set(trigger.id, Date.now()); callStart(trigger, false, true); }
+    sipPush(call);
+  }
+  call.legs.set(m.callId, tabletId);
+  for (const c of kioskClientsOf(tabletId)) sendPopup(sipPopup(call, 'ring'), c);
+}
+function sipCallOf(callId: string) { for (const c of sipCalls.values()) if (c.legs.has(callId)) return c; return undefined; }
+function sipAnswered(call: SipCall, tabletId: string) {
+  if (call.answered) return;
+  const name = store.tablet(tabletId)?.name ?? tabletId;
+  call.answered = name;
+  log.info(`SIP: ${call.name} – odebrał ${name}`);
+  if (call.trigger) callEvent(call.popupId, 'answer', name);
+  sipPush(call, true);
+}
+function sipLegEnd(callId: string) {
+  const call = sipCallOf(callId);
+  if (!call) return;
+  call.legs.delete(callId);
+  if (call.legs.size || call.end) return;
+  // a ring group may dial the panels again in a moment – wait before calling it over
+  call.end = setTimeout(() => {
+    if (call.legs.size || sipCalls.get(call.from) !== call) return;
+    sipCalls.delete(call.from);
+    log.info(`SIP: ${call.name} – koniec${call.answered ? '' : ' (nieodebrane)'}`);
+    sendPopup({ id: call.popupId, action: 'close' });
+    if (call.trigger) callEnd(call.popupId, true);
+    if (!call.answered) sipPush(call, true);
+  }, 2500);
+}
+/** a phone opened from the push while the door still rings: offer "Odbierz" (pickup code) once its SIP line is up */
+function sipOfferPickup(t: Tablet) {
+  if (!t.sip?.ext || !sipCfg()?.pickup) return;
+  for (const call of sipCalls.values()) {
+    if (call.answered || call.end || [...call.legs.values()].includes(t.id)) continue;
+    for (const c of kioskClientsOf(t.id)) sendPopup(sipPopup(call, 'pickup'), c);
+  }
+}
+const sipPickups = new Map<string, string>(); // callId of a pickup INVITE → tablet
+function sipLinkFor(t: Tablet) {
+  const own = new Set<string>(); // calls seen on this connection
+  return {
+    tabletId: t.id,
+    onDown(m: SipMsg) {
+      if (m.method === 'INVITE' && !own.has(m.callId)) { own.add(m.callId); sipRing(t.id, m); return; }
+      if (m.method === 'CANCEL' || m.method === 'BYE') { own.delete(m.callId); sipLegEnd(m.callId); sipPickupEnd(m.callId); return; }
+      // the PBX accepted a pickup: this phone now has the call that rang elsewhere
+      if (m.status === 200 && m.cseq === 'INVITE' && sipPickups.get(m.callId) === t.id) {
+        const call = [...sipCalls.values()].find((x) => !x.answered && !x.end) ?? [...sipCalls.values()].find((x) => !x.end);
+        if (call) { call.legs.set(m.callId, t.id); sipAnswered(call, t.id); }
+      }
+      if (m.status && m.status >= 300 && m.cseq === 'INVITE') sipPickups.delete(m.callId);
+    },
+    onUp(m: SipMsg) {
+      const cfg = sipCfg();
+      if (m.method === 'INVITE' && cfg?.pickup && m.ruriUser === cfg.pickup) { sipPickups.set(m.callId, t.id); return; }
+      if (m.status === 200 && m.cseq === 'INVITE') { const call = sipCallOf(m.callId); if (call) sipAnswered(call, t.id); return; }
+      if (m.status && m.status >= 300 && m.cseq === 'INVITE') { own.delete(m.callId); sipLegEnd(m.callId); return; }
+      if (m.method === 'BYE' || m.method === 'CANCEL') { own.delete(m.callId); sipLegEnd(m.callId); sipPickupEnd(m.callId); }
+    },
+    onClose() { for (const id of own) sipLegEnd(id); }
+  };
+}
+function sipPickupEnd(callId: string) { if (sipPickups.delete(callId)) sipLegEnd(callId); }
 
 // ---------------------------------------------------------------- quiet mode per panel
 const hm = (v?: string) => { const m = /^(\d{1,2}):(\d{2})$/.exec(v ?? ''); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };

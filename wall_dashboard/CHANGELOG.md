@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+- **Dzwonek z furtki przez centralę SIP** (VitalPBX / Asterisk) – do wyboru w Tablety → Dzwonek z furtki: „po staremu” (wyzwalacz HA + go2rtc + poczekalnia add-onu) albo „przez centralę SIP”. W trybie SIP panele i telefony są numerami wewnętrznymi centrali: centrala odbiera furtkę, gra powitanie i muzykę i dzwoni do wszystkich; pop-up ma Odbierz / Odrzuć / Otwórz furtkę, w rozmowie Wycisz / Rozłącz. Głos idzie bezpośrednio panel ⇄ centrala, add-on przekazuje tylko sygnalizację (działa przez HTTPS kiosku).
+- Telefony: push z aplikacji HA przy dzwonku; po otwarciu „Odbierz” przejmuje połączenie kodem przechwycenia (np. *8). Historia dzwonków i powiadomienia działają także w trybie SIP.
+- Na czas rozmowy SIP dashboard w tle jest wstrzymywany (słabe panele). Instrukcja konfiguracji centrali w dokumentacji add-onu.
+
 ## 1.0.9
 - Poczekalnia (IVR): „Odbierz w domofonie” jest naciskany ponownie (co 2 s, do 6 razy), dopóki stan połączenia (encja wyzwalacza, np. Call state z Hikvision Doorbell) nie przestanie być „dzwoni” – domofon ignoruje odebranie w pierwszej chwili połączenia. Muzyka startuje po odebraniu; w logu widać każdą próbę i moment odebrania.
 
