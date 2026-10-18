@@ -29,6 +29,13 @@ export function parseSip(text) {
         toUser: decodeURIComponent(user(h.get('to'))), ruriUser: req ? decodeURIComponent(/sips?:([^@;>\s]+)@?/.exec(req[2])?.[1] ?? '') : ''
     };
 }
+/** a final response to a request (copies Via / From / To / Call-ID / CSeq) */
+export function sipReply(text, code, reason) {
+    const head = text.split('\r\n\r\n')[0].split(/\r?\n/).slice(1);
+    const pick = (names) => head.filter((l) => names.includes(l.split(':')[0].trim().toLowerCase()));
+    const to = pick(['to', 't']).map((l) => (/;\s*tag=/i.test(l) ? l : l + ';tag=' + Math.random().toString(36).slice(2, 10)));
+    return [`SIP/2.0 ${code} ${reason}`, ...pick(['via', 'v']), ...pick(['from', 'f']), ...to, ...pick(['call-id', 'i']), ...pick(['cseq']), 'Content-Length: 0', '', ''].join('\r\n');
+}
 const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024, handleProtocols: (p) => (p.has('sip') ? 'sip' : false) });
 /** open SIP sessions (one per panel page) */
 export const sipLinks = new Set();
@@ -51,8 +58,29 @@ export function sipProxy(req, socket, head, cfg, link) {
         };
         up.on('open', () => { for (const p of pending.splice(0))
             up.send(p); });
-        up.on('message', (data) => { const t = read(data, 'down'); if (client.readyState === WebSocket.OPEN)
-            client.send(t); });
+        const refused = new Set(); // calls answered "busy" by the add-on
+        up.on('message', (data) => {
+            const text = data.toString();
+            const m = (() => { try {
+                return parseSip(text);
+            }
+            catch {
+                return null;
+            } })();
+            if (m && refused.has(m.callId))
+                return; // ACK / CANCEL of a call the panel never saw
+            if (m?.method === 'INVITE' && link.busy?.(m)) {
+                refused.add(m.callId);
+                if (refused.size > 200)
+                    refused.delete(refused.values().next().value);
+                if (up.readyState === WebSocket.OPEN)
+                    up.send(sipReply(text, 486, 'Busy Here'));
+                return;
+            }
+            const t = read(data, 'down');
+            if (client.readyState === WebSocket.OPEN)
+                client.send(t);
+        });
         client.on('message', (data) => { const t = read(data, 'up'); if (up.readyState === WebSocket.OPEN)
             up.send(t);
         else

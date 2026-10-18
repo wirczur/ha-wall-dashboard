@@ -22,7 +22,7 @@ import { sipLinks, sipProxy, type SipMsg } from './sip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -1434,6 +1434,14 @@ function sipLinkFor(t: Tablet) {
   const own = new Set<string>(); // calls seen on this connection
   return {
     tabletId: t.id,
+    // quiet mode with "do not take intercom calls": the panel is busy for the PBX too (only new calls, not re-INVITEs)
+    busy(m: SipMsg) {
+      if (own.has(m.callId)) return false;
+      const cur = store.tablet(t.id);
+      if (!cur?.quiet?.intercomSilent || !quietState(cur).on) return false;
+      log.info(`SIP: ${cur.name} w ciszy – połączenie od ${m.fromName || m.fromUser} odrzucone jako zajęte`);
+      return true;
+    },
     onDown(m: SipMsg) {
       if (m.method === 'INVITE' && !own.has(m.callId)) { own.add(m.callId); sipRing(t.id, m); return; }
       if (m.method === 'CANCEL' || m.method === 'BYE') { own.delete(m.callId); sipLegEnd(m.callId); sipPickupEnd(m.callId); return; }

@@ -595,7 +595,7 @@ const QuietEditor: FC<{ t: Tablet & { quietNow?: { on: boolean; reason?: string;
         <input list="ents-quiet" value={entity} onChange={(e) => setEntity(e.target.value.trim())} placeholder="np. input_boolean.cisza_pietro" />
       </label>
       <datalist id="ents-quiet">{[...hass.states.keys()].filter((e) => /^(input_boolean|switch|binary_sensor)\./.test(e)).map((e) => <option key={e} value={e} />)}</datalist>
-      <label className="check"><input type="checkbox" checked={!!q.intercomSilent} onChange={(e) => onSave({ ...q, hours, entity: entity || undefined, intercomSilent: e.target.checked || undefined })} />W ciszy nie przyjmuj rozmów z interkomu (dzwoniący zobaczy „Panel jest zajęty”)</label>
+      <label className="check"><input type="checkbox" checked={!!q.intercomSilent} onChange={(e) => onSave({ ...q, hours, entity: entity || undefined, intercomSilent: e.target.checked || undefined })} />W ciszy nie przyjmuj rozmów z interkomu ani z centrali SIP (dzwoniący zobaczy „Panel jest zajęty”, centrala dostaje „zajęty”)</label>
       {dirty && <button className="btn primary" onClick={() => onSave({ ...q, hours, entity: entity || undefined })}>Zapisz ciszę</button>}
       <p className="muted small">Na panelu włączysz ją też ręcznie kafelkiem „Cisza (ten panel)” – ręczne ustawienie wygrywa z harmonogramem do końca bieżącego okna. W ciszy pop-upy i wybudzanie ekranu działają, nie ma tylko dźwięku i mowy; interkom nie odbiera automatycznie.</p>
     </fieldset>

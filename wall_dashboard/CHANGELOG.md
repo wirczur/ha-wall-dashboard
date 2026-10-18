@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.1
+- Cisza na panelu z opcją „W ciszy nie przyjmuj rozmów z interkomu” dotyczy też centrali SIP: add-on sam odpowiada centrali „zajęty” (486), panel nie dzwoni i nie pokazuje pop-upu, a grupa dzwonienia dzwoni dalej na pozostałe panele i telefony. Bez tej opcji cisza tylko wycisza dźwięki, jak dotąd.
+
 ## 1.1.0
 - **Dzwonek z furtki przez centralę SIP** (VitalPBX / Asterisk) – do wyboru w Tablety → Dzwonek z furtki: „po staremu” (wyzwalacz HA + go2rtc + poczekalnia add-onu) albo „przez centralę SIP”. W trybie SIP panele i telefony są numerami wewnętrznymi centrali: centrala odbiera furtkę, gra powitanie i muzykę i dzwoni do wszystkich; pop-up ma Odbierz / Odrzuć / Otwórz furtkę, w rozmowie Wycisz / Rozłącz. Głos idzie bezpośrednio panel ⇄ centrala, add-on przekazuje tylko sygnalizację (działa przez HTTPS kiosku).
 - Telefony: push z aplikacji HA przy dzwonku; po otwarciu „Odbierz” przejmuje połączenie kodem przechwycenia (np. *8). Historia dzwonków i powiadomienia działają także w trybie SIP.
