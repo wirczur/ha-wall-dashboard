@@ -169,6 +169,14 @@ const TabletSip: FC<{ t: Tablet; onSave(p: Partial<Tablet>): void }> = ({ t, onS
         <input list={'nf-' + t.id} value={notify} placeholder="notify.mobile_app_iphone" onChange={(e) => setNotify(e.target.value)} />
         <datalist id={'nf-' + t.id}>{notifiers.map((n) => <option key={n} value={n} />)}</datalist>
         <small className="muted">Push otwiera link tego telefonu; „Odbierz” przejmuje połączenie kodem przechwycenia.</small></label>}
+      <div className="ins-grid2">
+        <label className="field"><span>Głośność systemu w rozmowie (10–100%)</span>
+          <input type="number" min={10} max={100} step={5} defaultValue={t.callVolume ?? 100} onBlur={(e) => onSave({ callVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
+          <small className="muted">Na czas rozmowy panel ustawia tę głośność, po rozmowie wraca do poprzedniej.</small></label>
+        <label className="field"><span>Wzmocnienie głosu rozmówcy (50–400%)</span>
+          <input type="number" min={50} max={400} step={25} defaultValue={t.callGain ?? 100} onBlur={(e) => onSave({ callGain: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
+          <small className="muted">Startowa wartość; w rozmowie zmienisz ją przyciskami − / + (panel ją zapamięta).</small></label>
+      </div>
       <div className="row-btns">
         <button className="btn" onClick={() => onSave({ sip: ext.trim() ? { ext: ext.trim(), password: pw } : undefined, ...(t.phone ? { notify: notify.trim() || undefined } : {}) })}>Zapisz SIP</button>
       </div>
@@ -262,6 +270,10 @@ const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSe
               Telefon / iPad użytkownika – dzwonki, pop-upy i budzenie z wyzwalaczy tylko, gdy wskazują ten tablet z nazwy
             </label>
             {t.phone && <p className="muted small" style={{ marginLeft: 26 }}>iPhone / iPad: otwórz link tabletu w Safari → Udostępnij → „Do ekranu początkowego”. Poza domem przez VPN.</p>}
+            <label className="field"><span>Głośność powiadomień i dzwonka (0–100%, puste = bez zmiany)</span>
+              <input type="number" min={0} max={100} step={5} defaultValue={t.notifyVolume ?? ''} onBlur={(e) => save(t, { notifyVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
+              <small className="muted">Domyślna dla dźwięków na tym panelu; głośność ustawiona w wyzwalaczu ma pierwszeństwo. Rozmowy SIP mają osobną głośność.</small>
+            </label>
             <QuietEditor t={t} onSave={(q) => save(t, { quiet: q })} />
             <label className="field"><span>Układ na małym ekranie</span>
               <select value={t.layout ?? ''} onChange={(e) => save(t, { layout: (e.target.value || undefined) as Tablet['layout'] })}>
@@ -287,9 +299,9 @@ const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSe
                 </select>
               </label>
               {t.intercomAuto && <label className="field"><span>Odbierz po (s)</span>
-                <input type="number" min={0} max={30} defaultValue={t.intercomAutoDelay ?? 2} onBlur={(e) => save(t, { intercomAutoDelay: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>}
+                <input type="number" min={0} max={30} defaultValue={t.intercomAutoDelay ?? 2} onBlur={(e) => save(t, { intercomAutoDelay: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} /></label>}
               <label className="field"><span>Głośność rozmowy (10–100)</span>
-                <input type="number" min={10} max={100} defaultValue={t.intercomVolume ?? 80} onBlur={(e) => save(t, { intercomVolume: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                <input type="number" min={10} max={100} defaultValue={t.intercomVolume ?? 80} onBlur={(e) => save(t, { intercomVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
               </label>
               <label className="field"><span>Kodek interkomu</span>
                 <select value={t.intercomCodec ?? ''} onChange={(e) => save(t, { intercomCodec: (e.target.value || undefined) as Tablet['intercomCodec'] })}>

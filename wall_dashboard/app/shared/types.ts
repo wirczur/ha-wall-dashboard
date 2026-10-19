@@ -340,6 +340,11 @@ export interface Tablet {
   appPin?: string;
   /** Wall Dashboard Android app: device model reported when paired */
   appModel?: string;
+  /** volume of notifications / doorbell sounds on this panel (system media volume, %); a trigger's own volume wins */
+  notifyVolume?: number;
+  /** SIP call: system volume during a call (%, default 100) and software boost of the other side's voice (%, 100 = as received) */
+  callVolume?: number;
+  callGain?: number;
   /** SIP account of this panel / phone on the PBX (extension + secret); used when the PBX is set up */
   sip?: { ext: string; password: string };
   /** phones: HA notification service (notify.mobile_app_…) – a SIP call from a door sends a push that opens this link */

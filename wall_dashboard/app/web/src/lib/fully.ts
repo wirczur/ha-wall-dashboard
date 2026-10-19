@@ -6,6 +6,7 @@ interface Fully {
   turnScreenOn?(): void; stopScreensaver?(): void; bringToForeground?(): void;
   setScreenBrightness?(v: number): void; playSound?(url: string, loop: boolean): void; stopSound?(): void; textToSpeech?(text: string): void;
   setAudioVolume?(level: number, stream: number): void;
+  getAudioVolume?(stream: number): number;
 }
 declare global { interface Window { fully?: Fully } }
 
@@ -34,6 +35,9 @@ export const SOUNDS: [string, string][] = [
 ];
 
 let current: HTMLAudioElement | null = null;
+let notifyVolume: number | undefined;
+/** panel's default volume for notifications / doorbell (a trigger's own volume wins) */
+export function setNotifyVolume(v?: number) { notifyVolume = v; }
 let quiet = false;
 /** quiet mode of the panel: sounds and speech are skipped (pop-ups, screen wake and calls still work) */
 export function setQuietMode(on: boolean) { quiet = on; if (on) stopTabletSound(); }
@@ -45,6 +49,7 @@ let unTouch: (() => void) | undefined;
 export function playTabletSound(src: string, o: { loop?: boolean; volume?: number; force?: boolean } = {}) {
   stopTabletSound();
   if (quiet && !o.force) return;
+  o = { ...o, volume: o.volume ?? notifyVolume };
   const f = window.fully;
   const url = new URL(src, location.href).href;
   if (f && o.volume != null) try { f.setAudioVolume?.(Math.round(Math.max(0, Math.min(100, o.volume))), 3); } catch { /* old Fully */ }

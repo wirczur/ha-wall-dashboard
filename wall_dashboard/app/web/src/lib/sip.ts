@@ -5,9 +5,14 @@ import type { RTCSession } from 'jssip/lib/RTCSession';
 import { useSyncExternalStore } from 'react';
 import { keyQuery } from './boot';
 
-export interface SipConfig { uri: string; password: string; ext: string; pickup?: string }
+export interface SipConfig { uri: string; password: string; ext: string; pickup?: string; callVolume?: number; callGain?: number }
 export type SipPhase = 'off' | 'registering' | 'ready' | 'error';
-export interface SipState { phase: SipPhase; error?: string; ringing: boolean; inCall: boolean; muted: boolean }
+export interface SipState { phase: SipPhase; error?: string; ringing: boolean; inCall: boolean; muted: boolean; gain: number }
+
+interface AppBridge { getAudioVolume?(stream: number): number; setAudioVolume?(level: number, stream: number): void }
+interface WallAppAudio { callAudio?(on: boolean): void }
+const GAIN_KEY = 'wd.sipGain';
+const STREAMS = [0, 3]; // Android: voice call + media (WebView plays a WebRTC call on one of them)
 
 const AUDIO: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
@@ -20,7 +25,14 @@ class SipPhone {
   private active: RTCSession | null = null;
   private audio = new Audio();
   private listeners = new Set<() => void>();
-  state: SipState = { phase: 'off', ringing: false, inCall: false, muted: false };
+  state: SipState = { phase: 'off', ringing: false, inCall: false, muted: false, gain: 100 };
+  private cfg?: SipConfig;
+  // the other side's voice: <audio> (muted, Chrome needs it to pull the stream) → WebAudio gain → speaker
+  private ctx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private source: MediaStreamAudioSourceNode | null = null;
+  /** system volumes before the call (restored afterwards) */
+  private saved: Record<number, number> = {};
   pickupCode?: string;
   private domain = '';
   /** microphone opened while ringing */
@@ -29,7 +41,37 @@ class SipPhone {
   private dropMic() { const m = this.mic; this.mic = null; void m?.then((st) => st?.getTracks().forEach((t) => t.stop())); }
 
   constructor() { this.audio.autoplay = true; }
-  private set(p: Partial<SipState>) { this.state = { ...this.state, ...p }; for (const l of this.listeners) l(); }
+  private set(p: Partial<SipState>) {
+    const was = this.state.inCall;
+    this.state = { ...this.state, ...p };
+    if (was !== this.state.inCall) this.callAudio(this.state.inCall);
+    for (const l of this.listeners) l();
+  }
+
+  /** call volume of the panel: system volume up for the call, back afterwards (Android app / Fully) */
+  private callAudio(on: boolean) {
+    const f = window.fully as AppBridge | undefined;
+    try { (window as unknown as { wallApp?: WallAppAudio }).wallApp?.callAudio?.(on); } catch { /* older app */ }
+    if (!f?.setAudioVolume) return;
+    try {
+      if (on) {
+        const v = Math.max(10, Math.min(100, this.cfg?.callVolume ?? 100));
+        for (const st of STREAMS) { const cur = f.getAudioVolume?.(st); if (cur != null && cur >= 0) this.saved[st] = cur; f.setAudioVolume(v, st); }
+      } else {
+        for (const [st, v] of Object.entries(this.saved)) f.setAudioVolume(v, Number(st));
+        this.saved = {};
+      }
+    } catch { /* not supported */ }
+    if (!on) { try { this.source?.disconnect(); } catch { /* */ } this.source = null; }
+  }
+
+  /** software boost of the other side's voice, % (also changed live in the pop-up; remembered on this panel) */
+  setGain(pct: number) {
+    const g = Math.max(50, Math.min(400, Math.round(pct)));
+    if (this.gainNode) this.gainNode.gain.value = g / 100;
+    try { localStorage.setItem(GAIN_KEY, String(g)); } catch { /* private mode */ }
+    this.set({ gain: g });
+  }
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
 
   start(cfg?: SipConfig) {
@@ -38,6 +80,10 @@ class SipPhone {
     this.cfgKey = key;
     this.ua?.stop(); this.ua = null;
     this.pickupCode = cfg?.pickup;
+    this.cfg = cfg;
+    let g = cfg?.callGain ?? 100;
+    try { const v = Number(localStorage.getItem(GAIN_KEY)); if (v) g = v; } catch { /* */ }
+    this.state = { ...this.state, gain: Math.max(50, Math.min(400, g)) };
     this.domain = cfg?.uri.split('@')[1] ?? '';
     if (!cfg) return this.set({ phase: 'off' });
     this.set({ phase: 'registering' });
@@ -91,7 +137,20 @@ class SipPhone {
   private attach(pc: RTCPeerConnection) {
     pc.addEventListener('track', (ev) => {
       if (ev.track.kind !== 'audio') return;
-      this.audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
+      const stream = ev.streams[0] ?? new MediaStream([ev.track]);
+      this.audio.srcObject = stream;
+      try {
+        const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AC) throw new Error('no WebAudio');
+        this.ctx ??= new AC();
+        if (!this.gainNode) { this.gainNode = this.ctx.createGain(); this.gainNode.connect(this.ctx.destination); }
+        this.gainNode.gain.value = this.state.gain / 100;
+        try { this.source?.disconnect(); } catch { /* */ }
+        this.source = this.ctx.createMediaStreamSource(stream);
+        this.source.connect(this.gainNode);
+        this.audio.muted = true; // the sound goes through the gain; the element only keeps the stream flowing
+        void this.ctx.resume().catch(() => {});
+      } catch { this.audio.muted = false; }
       void this.audio.play().catch(() => {});
     });
   }

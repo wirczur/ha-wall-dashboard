@@ -13,8 +13,9 @@ import { QuietBadge } from './QuietBadge';
 import { IntercomHost } from '../widgets/intercom';
 import { useIntercom, type IcConfig } from '../lib/intercom';
 import { sip, useSip, type SipConfig } from '../lib/sip';
+import { setNotifyVolume } from '../lib/fully';
 
-interface KioskData { tablet: { id: string; name: string; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
+interface KioskData { tablet: { id: string; name: string; notifyVolume?: number; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
 
 /** Tablet mode: shows the assigned dashboard, no settings. */
 export const KioskApp: FC = () => {
@@ -29,6 +30,7 @@ export const KioskApp: FC = () => {
       configureApp({ tablet: d.tablet.name, screen: d.tablet.screen, pin: d.tablet.appPin });
       setHouses(d.houses || []); setTvs(d.tvs || []); setData(d); setError('');
       sip.start(d.sip);
+      setNotifyVolume(d.tablet.notifyVolume);
       setCurrent((c) => (d.dashboards.some((x) => x.id === c) ? c : d.dashboards[0]?.id || ''));
     }).catch((e) => setError(e.message));
   }, []);

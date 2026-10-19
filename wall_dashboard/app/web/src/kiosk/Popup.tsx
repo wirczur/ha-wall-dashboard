@@ -87,6 +87,14 @@ export const PopupView: FC<{ popup: PopupDef; left: number; setLeft(f: (s: numbe
         {(popup.camera || popup.go2rtc?.stream) && (
           <div className="popup-cam"><CameraView entity={popup.camera ?? ''} talk={popup.talk} onTalk={(on) => on && report('answer')} go2rtc={popup.go2rtc} /></div>
         )}
+        {popup.sip && sp.inCall && (
+          <div className="sip-vol" role="group" aria-label="Głośność rozmowy">
+            <span>Głośność</span>
+            <button onClick={() => sip.setGain(sp.gain - (sp.gain > 100 ? 50 : 25))} disabled={sp.gain <= 50} aria-label="Ciszej">−</button>
+            <b>{sp.gain}%</b>
+            <button onClick={() => sip.setGain(sp.gain + (sp.gain >= 100 ? 50 : 25))} disabled={sp.gain >= 400} aria-label="Głośniej">+</button>
+          </div>
+        )}
         {popup.sip && (
           <div className="popup-acts">
             {!sp.inCall && <button className="pa-b answer" onClick={sipAnswer}><Icon name="mdi:phone" size={24} /><span>Odbierz</span></button>}

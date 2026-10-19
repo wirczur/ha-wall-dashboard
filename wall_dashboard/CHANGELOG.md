@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2
+- Głośność rozmowy SIP osobno od powiadomień: w trakcie rozmowy przyciski − / + (50–400%, wzmocnienie głosu rozmówcy, panel zapamiętuje ustawienie). W ustawieniach tabletu: „Głośność systemu w rozmowie” (na czas rozmowy, potem powrót do poprzedniej) i „Wzmocnienie głosu rozmówcy”.
+- „Głośność powiadomień i dzwonka” dla każdego tabletu (domyślna dla dźwięków panelu; głośność w wyzwalaczu ma pierwszeństwo).
+- Aplikacja na Androida 0.1.4: rozmowa SIP zawsze na głośniku (tryb komunikacji – na niektórych panelach dźwięk szedł do nieistniejącej słuchawki i był bardzo cichy), procesor nie zasypia przy wyłączonym ekranie, dashboard ma wysoki priorytet także w tle – dzwonek SIP dochodzi od razu.
+
 ## 1.1.1
 - Cisza na panelu z opcją „W ciszy nie przyjmuj rozmów z interkomu” dotyczy też centrali SIP: add-on sam odpowiada centrali „zajęty” (486), panel nie dzwoni i nie pokazuje pop-upu, a grupa dzwonienia dzwoni dalej na pozostałe panele i telefony. Bez tej opcji cisza tylko wycisza dźwięki, jak dotąd.
 

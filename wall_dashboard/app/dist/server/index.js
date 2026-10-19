@@ -20,7 +20,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -504,6 +504,13 @@ api.put('/tablets/:id', (req, res) => {
         t.sip = x && typeof x === 'object' && /^[\w.+-]{1,40}$/.test(String(x.ext ?? '')) && typeof x.password === 'string' && x.password.length <= 120
             ? { ext: String(x.ext), password: x.password } : undefined;
     }
+    const pct = (k, lo, hi) => {
+        if (k in (req.body ?? {}))
+            t[k] = isFinite(req.body[k]) && req.body[k] !== null && req.body[k] !== '' ? Math.max(lo, Math.min(hi, Math.round(Number(req.body[k])))) : undefined;
+    };
+    pct('notifyVolume', 0, 100);
+    pct('callVolume', 10, 100);
+    pct('callGain', 50, 400);
     if ('notify' in (req.body ?? {}))
         t.notify = /^notify\.\w+$/.test(String(req.body.notify ?? '')) ? String(req.body.notify) : undefined;
     if ('screen' in (req.body ?? {}))
@@ -513,7 +520,7 @@ api.put('/tablets/:id', (req, res) => {
     store.write();
     refreshKioskScopes();
     // the app on the panel takes the new screen / PIN settings with the reloaded kiosk data
-    if ('screen' in (req.body ?? {}) || 'appPin' in (req.body ?? {}) || 'sip' in (req.body ?? {}))
+    if (['screen', 'appPin', 'sip', 'notifyVolume', 'callVolume', 'callGain'].some((k) => k in (req.body ?? {})))
         for (const c of clients)
             if (c.mode === 'kiosk' && c.tabletId === t.id)
                 send(c, { type: 'dashboards-changed', ids: [] });
@@ -736,7 +743,7 @@ kapi.get('/pair/poll', (req, res) => {
 kapi.get('/kiosk', (req, res) => {
     const { tablet, scope } = kioskAuth(req);
     res.json({
-        tablet: { id: tablet.id, name: tablet.name, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold } },
+        tablet: { id: tablet.id, name: tablet.name, notifyVolume: tablet.notifyVolume, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold } },
         sip: sipFor(tablet),
         dashboards: scope.dashboards.map((id) => store.get(id)),
         houses: scope.houses.map((id) => store.data.houses[id]),
@@ -1715,7 +1722,7 @@ function sipFor(t) {
     const cfg = sipCfg();
     if (!cfg || !t.sip?.ext)
         return undefined;
-    return { uri: `sip:${t.sip.ext}@${sipDomain(cfg)}`, password: t.sip.password, ext: t.sip.ext, pickup: cfg.pickup };
+    return { uri: `sip:${t.sip.ext}@${sipDomain(cfg)}`, password: t.sip.password, ext: t.sip.ext, pickup: cfg.pickup, callVolume: t.callVolume, callGain: t.callGain };
 }
 /** door mapping of a trigger (when the PBX mode is on) */
 const sipDoorOf = (t) => (sipCfg()?.doors ?? []).find((d) => d.trigger === t.id);
