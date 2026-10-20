@@ -18,6 +18,7 @@ const KNOWN_APPS = [
     { appId: '3201606009684', name: 'Spotify' }, { appId: '3201512006963', name: 'Plex' }, { appId: '3202203026841', name: 'Twitch' },
     { appId: '3201908019041', name: 'Apple Music' }, { appId: '3201608010191', name: 'Deezer' },
     { appId: '3202009021709', name: 'Disney+' }, { appId: '3202204027038', name: 'Disney+' },
+    { appId: '3202007021208', name: 'Jellyfin' }, { appId: 'AprZAARz4r.Jellyfin', name: 'Jellyfin' },
     { appId: 'org.tizen.browser', name: 'Internet' }
 ];
 export class SamsungTv {

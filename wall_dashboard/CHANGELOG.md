@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.3
+- Telewizory Samsung: wykrywanie Jellyfin – wersja ze sklepu Samsung (3202007021208) i wgrana ręcznie (AprZAARz4r.Jellyfin).
+
 ## 1.1.2
 - Głośność rozmowy SIP osobno od powiadomień: w trakcie rozmowy przyciski − / + (50–400%, wzmocnienie głosu rozmówcy, panel zapamiętuje ustawienie). W ustawieniach tabletu: „Głośność systemu w rozmowie” (na czas rozmowy, potem powrót do poprzedniej) i „Wzmocnienie głosu rozmówcy”.
 - „Głośność powiadomień i dzwonka” dla każdego tabletu (domyślna dla dźwięków panelu; głośność w wyzwalaczu ma pierwszeństwo).
