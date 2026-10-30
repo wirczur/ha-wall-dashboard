@@ -49,6 +49,8 @@ export const PopupHost: FC = () => {
 export const PopupView: FC<{ popup: PopupDef; left: number; setLeft(f: (s: number) => number): void; onClose(): void; toast?: string; setToast(m: string): void }> =
   ({ popup, left, setLeft, onClose, toast, setToast }) => {
   const setPopup = (_: null) => onClose();
+  // opened by a tile on pointer-up: the click of the same touch must not close it through the backdrop
+  const openedAt = useRef(performance.now());
   const total = popup.timeout ?? 60;
   const close = (everywhere: boolean) => {
     if (everywhere && popup.id) hass.send({ type: 'popup-dismiss', popupId: popup.id });
@@ -75,7 +77,7 @@ export const PopupView: FC<{ popup: PopupDef; left: number; setLeft(f: (s: numbe
   };
   const sipReject = () => { sip.hangup(true); reject(); };
   return (
-    <div className="popup-scrim" onClick={(e) => { if (e.target === e.currentTarget) setPopup(null); }}>
+    <div className="popup-scrim" onClick={(e) => { if (e.target === e.currentTarget && performance.now() - openedAt.current > 450) setPopup(null); }}>
       <section className="popup" role="dialog" aria-modal="true" aria-label={popup.title || 'Powiadomienie'}>
         <header className="d-head">
           <div>

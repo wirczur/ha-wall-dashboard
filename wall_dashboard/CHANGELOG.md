@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.4
+- Panel boczny i pop-up otwierane z kafelka na ekranach dotykowych od razu się zamykały (kliknięcie z tego samego dotknięcia trafiało w tło panelu). Tło ignoruje teraz kliknięcia przez 0,45 s po otwarciu.
+
 ## 1.1.3
 - Telewizory Samsung: wykrywanie Jellyfin – wersja ze sklepu Samsung (3202007021208) i wgrana ręcznie (AprZAARz4r.Jellyfin).
 

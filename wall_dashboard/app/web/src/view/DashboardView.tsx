@@ -247,6 +247,10 @@ const Drawer: FC<{ def: PanelDef; fallbackTitle?: string; onClose(): void; onErr
   const grid = def.layout === 'grid' || ((!def.layout || def.layout === 'auto') && cams >= 2);
   const cols = Math.max(1, Math.min(4, def.columns ?? (size === 'large' || size === 'full' ? 3 : 2)));
   const closeRef = useRef<HTMLButtonElement>(null);
+  // a tile opens the panel on pointer-up; the browser's click that follows the same touch would land on the
+  // freshly drawn backdrop and close the panel at once – ignore backdrop clicks right after opening
+  const openedAt = useRef(performance.now());
+  const closeFromScrim = () => { if (performance.now() - openedAt.current > 450) onClose(); };
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -254,7 +258,7 @@ const Drawer: FC<{ def: PanelDef; fallbackTitle?: string; onClose(): void; onErr
   }, [onClose]);
   return (
     <>
-      <div className="scrim" onClick={onClose} />
+      <div className="scrim" onClick={closeFromScrim} />
       <section className={'drawer size-' + size + (def.mode === 'center' ? ' center' : '') + (grid ? ' grid' : '')} role="dialog" aria-modal="true" aria-label={def.title || fallbackTitle || 'Panel'}>
         <header className="d-head">
           <div>
