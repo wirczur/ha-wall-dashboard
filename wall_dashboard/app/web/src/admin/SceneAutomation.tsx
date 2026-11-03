@@ -35,13 +35,14 @@ export const SceneAutomation: FC = () => {
           <button className="btn primary" onClick={() => setMode('automation')}><Icon name="plus" size={18} />Nowa automatyzacja</button>
         </div>
       </div>
-      <p className="muted">Kreator krok po kroku zapisuje sceny i automatyzacje bezpośrednio w Home Assistant – potem są widoczne i edytowalne także w HA (Ustawienia → Automatyzacje i sceny). Scenę dodasz na dashboard przyciskiem z encją <code>scene.…</code>.</p>
+      <p className="muted">Kreator krok po kroku zapisuje sceny i automatyzacje bezpośrednio w Home Assistant – potem są widoczne i edytowalne także w HA (Ustawienia → Automatyzacje i sceny). Tutaj widać tylko te utworzone w Wall Dashboard; pozostałe zostają w HA. Scenę dodasz na dashboard przyciskiem z encją <code>scene.…</code>.</p>
       {msg && <p className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
       {!items ? <p className="muted">Wczytuję…</p> : (
         <div className="sa-cols">
           <div>
             <h3>Automatyzacje ({items.automations.length})</h3>
             <div className="sa-list">
+              {!items.automations.length && <p className="muted small">Brak automatyzacji utworzonych w Wall Dashboard.</p>}
               {items.automations.map((a) => (
                 <div key={a.entity_id} className="sa-it">
                   <label className="check" title={a.state === 'on' ? 'aktywna' : 'wyłączona'}><input type="checkbox" checked={a.state === 'on'} onChange={(e) => run(hass.call('automation', e.target.checked ? 'turn_on' : 'turn_off', undefined, a.entity_id))} /></label>
@@ -55,6 +56,7 @@ export const SceneAutomation: FC = () => {
           <div>
             <h3>Sceny ({items.scenes.length})</h3>
             <div className="sa-list">
+              {!items.scenes.length && <p className="muted small">Brak scen utworzonych w Wall Dashboard.</p>}
               {items.scenes.map((s) => (
                 <div key={s.entity_id} className="sa-it">
                   <Icon name="sun" size={18} />

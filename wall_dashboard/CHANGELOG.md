@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2
+- *Sceny i automatyzacje* pokazują tylko sceny i automatyzacje utworzone w Wall Dashboard (pozostałe z HA są pomijane). Automatyzacja telewizora sceny nie jest pokazywana osobno – scena ma dopisek „+ telewizor”.
+
 ## 1.3.1
 - **Telewizor w scenie**: w kreatorze sceny można dodać telewizor z pilota Wall Dashboard – włącz / wyłącz, aplikacja, wejście (TV, HDMI 1–4), dodatkowe klawisze. Obok sceny powstaje automatyzacja „Scena „…” – telewizor”, która przy włączeniu sceny wysyła zdarzenie `wall_dashboard_tv`; add-on wykonuje kroki (z Wake-on-LAN, gdy telewizor jest wyłączony). „Podgląd – ustaw teraz w domu” steruje też telewizorem.
 - Nowe zdarzenie HA `wall_dashboard_tv` do sterowania telewizorem z własnych automatyzacji i skryptów.

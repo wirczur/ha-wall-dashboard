@@ -20,7 +20,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -2134,12 +2134,16 @@ async function haConfig(kind, id, method, body) {
     }
     await requireHa().callService(kind, 'reload');
 }
+/** only what this add-on created (config id "wd_…"); the TV automations of scenes are shown with their scene, not on their own */
+const ownId = (id) => typeof id === 'string' && id.startsWith('wd_');
 api.get('/ha/automations', (_req, res) => {
     const states = [...(ha?.states.values() ?? [])];
+    const autos = states.filter((s) => s.entity_id.startsWith('automation.') && ownId(s.attributes.id));
     res.json({
-        automations: states.filter((s) => s.entity_id.startsWith('automation.')).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, state: s.state, last_triggered: s.attributes.last_triggered })),
-        scenes: states.filter((s) => s.entity_id.startsWith('scene.')).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, entities: s.attributes.entity_id,
-            tv: !!s.attributes.id && states.some((a) => a.entity_id.startsWith('automation.') && a.attributes.id === sceneTvId(String(s.attributes.id))) }))
+        automations: autos.filter((s) => !String(s.attributes.id).endsWith('_tv') || !states.some((x) => x.entity_id.startsWith('scene.') && sceneTvId(String(x.attributes.id)) === s.attributes.id))
+            .map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, state: s.state, last_triggered: s.attributes.last_triggered })),
+        scenes: states.filter((s) => s.entity_id.startsWith('scene.') && ownId(s.attributes.id)).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, entities: s.attributes.entity_id,
+            tv: autos.some((a) => a.attributes.id === sceneTvId(String(s.attributes.id))) }))
     });
 });
 api.post('/ha/scene', asyncH(async (req, res) => {
