@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+- **Własne motywy** (nowa zakładka *Motywy*):
+  - kolory tła, kafelków, tekstu, akcentu i stanu „włączony”;
+  - kafelki pełne lub szklane, zaokrąglenie, czcionka;
+  - własny CSS (automatycznie zawężony do motywu);
+  - podgląd na żywo na wybranym dashboardzie;
+  - gotowe punkty startowe (Szkło, Mech, Grafit, Papier, Ocean), import i eksport JSON.
+
+  Wybór w edytorze: *Motyw → Wygląd → „Mój: …”*. Motyw obejmuje też pop-upy i panele boczne na tabletach.
+- README repozytorium: opis funkcji, instalacja w HA (również z prywatnego repozytorium) i przykładowe zrzuty ekranu.
+
 ## 1.1.4
 - Panel boczny i pop-up otwierane z kafelka na ekranach dotykowych od razu się zamykały (kliknięcie z tego samego dotknięcia trafiało w tło panelu). Tło ignoruje teraz kliknięcia przez 0,45 s po otwarciu.
 

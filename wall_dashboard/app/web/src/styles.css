@@ -1282,3 +1282,25 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 .sip-vol button { width: 56px; height: 48px; border-radius: 16px; border: 0; background: rgba(var(--ink), .12); color: var(--fg); font-size: 26px; font-weight: 700; touch-action: manipulation; }
 .sip-vol button:disabled { opacity: .35; }
 .sip-vol b { min-width: 64px; text-align: center; font-size: 20px; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* admin: own themes */
+.th-layout { display: grid; grid-template-columns: 240px minmax(320px, 1fr) minmax(360px, 1.2fr); gap: 14px; align-items: start; }
+@media (max-width: 1200px) { .th-layout { grid-template-columns: 220px 1fr; } .th-prev { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .th-layout { grid-template-columns: 1fr; } }
+.th-list { display: flex; flex-direction: column; gap: 6px; }
+.th-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; background: transparent; text-align: left; }
+.th-item.on { border-color: var(--accent); background: rgba(var(--ink), .06); }
+.th-new { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.th-new .btn { justify-content: flex-start; display: flex; align-items: center; gap: 8px; }
+.th-sw { display: inline-flex; gap: 3px; padding: 4px; border-radius: 8px; border: 1px solid var(--line); flex: 0 0 auto; }
+.th-sw b { width: 10px; height: 18px; border-radius: 3px; display: block; }
+.th-edit { display: flex; flex-direction: column; gap: 10px; }
+.th-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.th-color { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.th-color input[type=color] { width: 40px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; flex: 0 0 auto; }
+.th-color span { flex: 1; min-width: 0; }
+.th-hex { width: 84px; font-family: ui-monospace, monospace; font-size: 12px; }
+.th-css textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
+.th-prev { display: flex; flex-direction: column; gap: 8px; }
+.th-frame { position: relative; height: 560px; border-radius: 14px; overflow: hidden; }
+.th-frame .dash.embedded { position: absolute; inset: 0; }

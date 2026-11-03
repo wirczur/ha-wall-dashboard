@@ -1,6 +1,7 @@
 // Seasonal look: which skin applies today and which particle effect goes with it.
 import { useEffect, useState } from 'react';
-import type { ThemeDef } from '../../../shared/types';
+import type { CustomTheme, ThemeDef } from '../../../shared/types';
+import { getTheme, useThemes } from './themes';
 
 export type Skin = NonNullable<ThemeDef['skin']>;
 export type FxKind = 'none' | 'snow' | 'hearts' | 'leaves' | 'petals';
@@ -33,11 +34,14 @@ export function occasionFor(d: Date): Skin | undefined {
 }
 
 /** Effective skin + effect, re-checked every hour (the tablet runs for days). */
-export function useLook(theme: ThemeDef): { skin?: Skin; fx: FxKind } {
+export function useLook(theme: ThemeDef): { skin?: Skin | 'custom'; fx: FxKind; custom?: CustomTheme } {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 3600_000); return () => clearInterval(t); }, []);
+  useThemes(); // re-render when the own themes change
   const occ = theme.occasions ? occasionFor(now) : undefined;
-  const skin = occ ?? (theme.skin && theme.skin !== 'glass' ? theme.skin : undefined);
-  const fx = !theme.effect || theme.effect === 'auto' ? (skin ? SKIN_FX[skin] ?? 'none' : 'none') : theme.effect;
-  return { skin, fx };
+  // own theme: 'flat' uses the opaque-tile rules of the skins ([data-skin]), 'glass' the default glass rules
+  const custom = !occ ? getTheme(theme.custom) : undefined;
+  const skin = occ ?? (custom ? (custom.base === 'flat' ? 'custom' : undefined) : theme.skin && theme.skin !== 'glass' ? theme.skin : undefined);
+  const fx = !theme.effect || theme.effect === 'auto' ? (skin && skin !== 'custom' ? SKIN_FX[skin] ?? 'none' : 'none') : theme.effect;
+  return { skin, fx, custom };
 }

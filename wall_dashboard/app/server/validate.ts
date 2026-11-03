@@ -10,6 +10,7 @@ export function validateDashboard(input: any, id: string): DashboardDoc {
   if (typeof input.title !== 'string' || !input.title.trim()) throw new Error('Brak pola "title"');
   if (!Array.isArray(input.views) || input.views.length === 0) throw new Error('"views" musi być niepustą tablicą');
   const theme = { ...DEFAULT_THEME, ...(input.theme || {}), background: { ...DEFAULT_THEME.background, ...(input.theme?.background || {}) } };
+  if (theme.custom !== undefined && !(typeof theme.custom === 'string' && /^[\w-]{1,40}$/.test(theme.custom))) delete theme.custom;
   const viewIds = new Set<string>();
   const views = input.views.map((v: any, vi: number) => {
     const where = `views[${vi}]`;

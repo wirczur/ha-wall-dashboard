@@ -310,3 +310,18 @@ Przełączenie w każdej chwili w obie strony – ustawienia SIP zostają zapisa
 - Panel z kontem SIP rejestruje się w centrali po otwarciu dashboardu; dzwonek otwiera pop-up z **Odbierz / Odrzuć / Otwórz furtkę**, w rozmowie **Wycisz / Rozłącz**. „Odrzuć” odrzuca dzwonek na wszystkich panelach (centrala przechodzi do pożegnania).
 - Telefon dostaje push z aplikacji HA; stuknięcie otwiera Wall Dashboard, a „Odbierz” przejmuje dzwoniące połączenie kodem przechwycenia.
 - Gdy SIP jest włączony, wyzwalacz z HA tej furtki nie otwiera pop-upu (robi to połączenie), a poczekalnia add-onu nie działa – jest w centrali.
+
+## Własne motywy
+
+Zakładka **Motywy** → **Nowy motyw na bazie** (Szkło, Mech, Grafit, Papier, Ocean) albo **Importuj** (JSON).
+
+- **Kolory:** tło, kafelek, tekst, tekst drugorzędny, akcent, kafelek „włączony” (np. zapalone światło) z tekstem i ikoną, kolory OK i błędu.
+- **Kafelki:**
+  - **Pełne:** płaskie, bez rozmycia, najlżejsze dla słabych paneli;
+  - **Szkło:** półprzezroczyste, krycie ustawiasz suwakiem.
+- **Zaokrąglenie** kafelków i **czcionka:** systemowa, szeryfowa albo własna, np. z Google Fonts przez `@import` w CSS.
+- **Własny CSS:** reguły są automatycznie zawężone do motywu (`[data-theme="…"]`), więc nie psują innych dashboardów.
+- **Podgląd** na żywo pokazuje wybrany dashboard albo przykład.
+- **Eksportuj** kopiuje motyw jako JSON, np. żeby przenieść go na inny HA.
+
+Motyw wybierasz w edytorze dashboardu: **Motyw → Wygląd → „Mój: …”**. Zmiany motywu po zapisaniu trafiają od razu na tablety. Motywy okolicznościowe (Święta, Wielkanoc…), jeśli są włączone, mają pierwszeństwo w swoje dni.

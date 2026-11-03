@@ -298,6 +298,45 @@ export interface ThemeDef {
   /** 0..1 default tile background opacity */
   tileOpacity: number;
   radius: number;
+  /** own theme (StoreData.themes id) – used instead of the built-in look; occasion skins still win when on */
+  custom?: string;
+}
+
+/** A user-made theme: colours, tile style, font and optional extra CSS. Shared by all dashboards that pick it. */
+export interface CustomTheme {
+  id: string;
+  name: string;
+  /** 'flat' = opaque tiles without blur (like Mech), 'glass' = translucent blurred tiles over the background */
+  base: 'flat' | 'glass';
+  /** dark or light colour scheme (form controls, scrollbars) */
+  dark: boolean;
+  colors: {
+    /** page background */
+    bg: string;
+    /** text */
+    fg: string;
+    /** secondary text (default: text at 65%) */
+    muted?: string;
+    accent: string;
+    /** tile background */
+    tile: string;
+    /** tile of something that is on (light, switch) */
+    on: string;
+    /** text and icon on an "on" tile */
+    onText: string;
+    /** icon on an "on" tile (default: accent) */
+    onIcon?: string;
+    ok?: string;
+    err?: string;
+  };
+  /** glass: tile opacity 0..1 */
+  tileOpacity?: number;
+  /** corner radius of tiles, px */
+  radius?: number;
+  /** CSS font-family, e.g. "Inter, sans-serif" (fonts must be installed on the device or loaded in the CSS below) */
+  font?: string;
+  /** extra CSS for this theme; nested under [data-theme="<id>"] automatically */
+  css?: string;
 }
 
 export type TabStyle = 'top' | 'pills' | 'bottom' | 'rail' | 'tiles' | 'tilesTop';
@@ -403,6 +442,8 @@ export interface StoreData {
   haTvs?: Record<string, { apps: TvApp[] }>;
   /** built-in pop-up / wake reactions to entities */
   triggers?: TriggerDef[];
+  /** own themes (Motywy) */
+  themes?: CustomTheme[];
   /** doorbell / intercom call log (newest first, capped) */
   calls?: CallRecord[];
 }

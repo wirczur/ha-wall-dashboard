@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { SipSettings, ClientCall, ClientMsg, DashboardDoc, DeviceCmd, PairRequest, ScreenDef, CallRecord, EntityInfo, IcEndReason, IvrDef, PopupDef, QuietDef, QuietState, Tablet, ServerMsg, TriggerDef, TvApp, TvDef, WakeOptions } from '../shared/types.js';
+import type { CustomTheme, SipSettings, ClientCall, ClientMsg, DashboardDoc, DeviceCmd, PairRequest, ScreenDef, CallRecord, EntityInfo, IcEndReason, IvrDef, PopupDef, QuietDef, QuietState, Tablet, ServerMsg, TriggerDef, TvApp, TvDef, WakeOptions } from '../shared/types.js';
 import { ENTITY_RE } from '../shared/types.js';
 import { HaClient } from './ha.js';
 import { log } from './log.js';
@@ -22,7 +22,7 @@ import { sipLinks, sipProxy, type SipMsg } from './sip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.1.4';
+const VERSION = '1.2.0';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -533,6 +533,38 @@ api.get('/history/:entity', asyncH(async (req, res) => {
   res.json(await history(req.params.entity, Math.min(168, Math.max(1, Number(req.query.hours) || 24))));
 }));
 
+// ------------------------------------------------------------ own themes
+const HEX = /^#[0-9a-fA-F]{6}$/;
+function cleanTheme(x: any): CustomTheme | null {
+  if (!x || typeof x !== 'object' || !x.colors || typeof x.colors !== 'object') return null;
+  const c = x.colors, col = (v: unknown) => (typeof v === 'string' && HEX.test(v) ? v : undefined);
+  const req = ['bg', 'fg', 'accent', 'tile', 'on', 'onText'] as const;
+  if (req.some((k) => !col(c[k]))) return null;
+  const font = typeof x.font === 'string' ? x.font.replace(/[;{}<>]/g, '').trim().slice(0, 160) : '';
+  return {
+    id: typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) ? x.id : 'th-' + newId(),
+    name: String(x.name ?? 'Motyw').trim().slice(0, 40) || 'Motyw',
+    base: x.base === 'glass' ? 'glass' : 'flat', dark: !!x.dark,
+    colors: { bg: c.bg, fg: c.fg, accent: c.accent, tile: c.tile, on: c.on, onText: c.onText,
+      ...(col(c.muted) ? { muted: c.muted } : {}), ...(col(c.onIcon) ? { onIcon: c.onIcon } : {}), ...(col(c.ok) ? { ok: c.ok } : {}), ...(col(c.err) ? { err: c.err } : {}) },
+    ...(isFinite(x.tileOpacity) && x.tileOpacity !== null ? { tileOpacity: Math.max(0, Math.min(1, Number(x.tileOpacity))) } : {}),
+    ...(isFinite(x.radius) && x.radius !== null ? { radius: Math.max(0, Math.min(40, Math.round(Number(x.radius)))) } : {}),
+    ...(font ? { font } : {}),
+    // the CSS lives inside a nested block – it must not close it (no "</style>", balanced braces)
+    ...(typeof x.css === 'string' && x.css.trim() ? { css: x.css.replace(/<\/?style/gi, '').slice(0, 20000) } : {})
+  };
+}
+api.get('/themes', (_req, res) => res.json(store.data.themes ?? []));
+api.put('/themes', (req, res) => {
+  if (!Array.isArray(req.body)) return res.status(400).json({ error: 'Oczekiwano listy motywów' });
+  const out = req.body.map(cleanTheme).filter((t: CustomTheme | null): t is CustomTheme => !!t).slice(0, 50);
+  const css = out.find((t: CustomTheme) => t.css && (t.css.match(/{/g)?.length ?? 0) !== (t.css.match(/}/g)?.length ?? 0));
+  if (css) return res.status(400).json({ error: `Motyw „${css.name}”: niezamknięty nawias { } w CSS` });
+  store.data.themes = out; store.write();
+  for (const c of clients) if (c.mode === 'kiosk') send(c, { type: 'dashboards-changed', ids: [] });
+  res.json(out);
+});
+
 // ------------------------------------------------------------ backup / restore (e.g. moving to the add-on from the repository)
 api.get('/backup', (_req, res) => {
   const media = fs.readdirSync(MEDIA_DIR).filter((f) => !f.startsWith('.') && fs.statSync(path.join(MEDIA_DIR, f)).isFile())
@@ -630,6 +662,7 @@ kapi.get('/kiosk', (req, res) => {
   res.json({
     tablet: { id: tablet.id, name: tablet.name, notifyVolume: tablet.notifyVolume, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold } },
     sip: sipFor(tablet),
+    themes: (store.data.themes ?? []).filter((th) => scope.dashboards.some((id) => store.get(id)?.theme.custom === th.id)),
     dashboards: scope.dashboards.map((id) => store.get(id)),
     houses: scope.houses.map((id) => store.data.houses[id]),
     tvs: [

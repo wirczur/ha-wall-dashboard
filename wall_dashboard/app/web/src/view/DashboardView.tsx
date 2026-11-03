@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react';
-import type { DashboardDoc, PanelDef, TabStyle, ThemeDef, ViewDef, WidgetDef, WidgetStyle } from '../../../shared/types';
+import type { DashboardDoc, PanelDef, TabStyle, ThemeDef, ViewDef, WidgetDef, WidgetStyle , CustomTheme } from '../../../shared/types';
 import { defaultTap, isInteractive, runAction, type ActionCtx } from '../lib/actions';
 import { useConnection } from '../lib/hass';
 import { Icon } from '../ui/Icon';
 import { WIDGETS } from '../widgets/widgets';
 import { PanelRowView } from './PanelRows';
 import { useLook } from '../lib/occasion';
+import { themeCssVars } from '../lib/themes';
 import { SeasonFx } from '../ui/SeasonFx';
 
 const RemoteLazy = lazy(() => import('../remote/Remote').then((m) => ({ default: m.Remote })));
@@ -45,8 +46,12 @@ export const DashboardView: FC<Props> = ({ doc, onDashboard, embedded }) => {
     if (embedded) return;
     const el = document.documentElement;
     if (look.skin) el.dataset.skin = look.skin; else delete el.dataset.skin;
-    return () => { delete el.dataset.skin; };
-  }, [embedded, look.skin]);
+    // own theme: its variables on the whole page too (pop-ups, intercom, toasts live outside the dashboard)
+    const vars = look.custom ? themeCssVars(look.custom) : {};
+    for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v);
+    if (look.custom) el.dataset.theme = look.custom.id; else delete el.dataset.theme;
+    return () => { delete el.dataset.skin; delete el.dataset.theme; for (const k of Object.keys(vars)) el.style.removeProperty(k); };
+  }, [embedded, look.skin, look.custom]);
   const showBar = doc.showTabs !== false && tabs.length > 1 && !!view;
 
   // swipe like pages of a book: left → next view, right → previous (tab views only)
@@ -101,7 +106,7 @@ export const DashboardView: FC<Props> = ({ doc, onDashboard, embedded }) => {
   const pick = useCallback((id: string) => { setSlide(''); ctx.setView(id); }, [ctx]);
 
   return (
-    <div ref={dashRef} data-skin={look.skin} className={'dash' + (embedded ? ' embedded' : '') + (showBar ? ' tabs-' + tabStyle + (floating ? ' tabs-float' : '') : '')} style={themeVars(doc.theme, look.skin)}>
+    <div ref={dashRef} data-skin={look.skin} data-theme={look.custom?.id} className={'dash' + (embedded ? ' embedded' : '') + (showBar ? ' tabs-' + tabStyle + (floating ? ' tabs-float' : '') : '')} style={lookVars(doc.theme, look)}>
       <Background theme={doc.theme} skin={look.skin} />
       <SeasonFx kind={look.fx} />
       {showBar && !atBottom && <TabBar views={tabs} active={view.id} style={tabStyle} align={doc.tabAlign} onPick={pick} />}
@@ -129,6 +134,12 @@ export const TabBar: FC<{ views: ViewDef[]; active?: string; style: TabStyle; al
     </nav>
   );
 };
+
+/** variables of the effective look: an own theme (with the dashboard's radius when the theme has none) or a built-in skin */
+export function lookVars(t: ThemeDef, look: { skin?: string; custom?: CustomTheme }): CSSProperties {
+  if (look.custom) return { '--radius': t.radius + 'px', ...themeCssVars(look.custom) } as CSSProperties;
+  return themeVars(t, look.skin);
+}
 
 export function themeVars(t: ThemeDef, skin: string | undefined = t.skin): CSSProperties {
   // a skin brings its own colours; only the radius from the theme still applies

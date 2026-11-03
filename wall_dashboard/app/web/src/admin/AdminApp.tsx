@@ -9,8 +9,10 @@ import { Icon } from '../ui/Icon';
 import { DashboardEditor } from './DashboardEditor';
 import { HouseEditor, Houses } from './HouseEditor';
 import { Tvs } from './Tvs';
+import { Themes } from './Themes';
+import { setThemes } from '../lib/themes';
 
-type Tab = 'dashboards' | 'houses' | 'tvs' | 'tablets' | 'triggers' | 'automations' | 'entities';
+type Tab = 'dashboards' | 'houses' | 'tvs' | 'tablets' | 'triggers' | 'automations' | 'entities' | 'themes';
 interface Info { version: string; kioskPort: number; haConnected: boolean; settings: Settings }
 
 /** Admin UI: opened from the Home Assistant sidebar (ingress). Full access. */
@@ -21,7 +23,7 @@ export const AdminApp: FC = () => {
   const [info, setInfo] = useState<Info | null>(null);
   const conn = useConnection();
 
-  useEffect(() => { hass.start(); api.get<Info>('info').then(setInfo).catch(() => {}); }, []);
+  useEffect(() => { hass.start(); api.get<Info>('info').then(setInfo).catch(() => {}); api.get<import('../../../shared/types').CustomTheme[]>('themes').then(setThemes).catch(() => {}); }, []);
   useEffect(() => {
     history.replaceState(null, '', editing ? '#edit/' + encodeURIComponent(editing) : editingHouse ? '#house/' + encodeURIComponent(editingHouse) : '#');
   }, [editing, editingHouse]);
@@ -37,7 +39,7 @@ export const AdminApp: FC = () => {
           <p className="muted">Wersja {boot.version} · {conn.ha ? 'połączono z Home Assistant' : 'brak połączenia z Home Assistant'}</p>
         </div>
         <nav className="a-tabs" role="tablist">
-          {([['dashboards', 'Dashboardy'], ['houses', 'Domy 3D'], ['tvs', 'Telewizory'], ['tablets', 'Tablety'], ['triggers', 'Wyzwalacze'], ['automations', 'Sceny i automatyzacje'], ['entities', 'Encje']] as [Tab, string][]).map(([k, l]) => (
+          {([['dashboards', 'Dashboardy'], ['houses', 'Domy 3D'], ['tvs', 'Telewizory'], ['themes', 'Motywy'], ['tablets', 'Tablety'], ['triggers', 'Wyzwalacze'], ['automations', 'Sceny i automatyzacje'], ['entities', 'Encje']] as [Tab, string][]).map(([k, l]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
           ))}
         </nav>
@@ -45,6 +47,7 @@ export const AdminApp: FC = () => {
       {tab === 'dashboards' && <Dashboards onEdit={setEditing} />}
       {tab === 'houses' && <Houses onEdit={setEditingHouse} />}
       {tab === 'tvs' && <Tvs />}
+      {tab === 'themes' && <Themes />}
       {tab === 'tablets' && info && <Tablets info={info} onSettings={(s) => setInfo({ ...info, settings: s })} />}
       {tab === 'triggers' && <Triggers />}
       {tab === 'automations' && <SceneAutomation />}

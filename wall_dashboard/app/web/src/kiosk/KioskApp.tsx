@@ -14,8 +14,10 @@ import { IntercomHost } from '../widgets/intercom';
 import { useIntercom, type IcConfig } from '../lib/intercom';
 import { sip, useSip, type SipConfig } from '../lib/sip';
 import { setNotifyVolume } from '../lib/fully';
+import { setThemes } from '../lib/themes';
+import type { CustomTheme } from '../../../shared/types';
 
-interface KioskData { tablet: { id: string; name: string; notifyVolume?: number; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
+interface KioskData { tablet: { id: string; name: string; notifyVolume?: number; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; themes?: CustomTheme[]; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
 
 /** Tablet mode: shows the assigned dashboard, no settings. */
 export const KioskApp: FC = () => {
@@ -29,6 +31,7 @@ export const KioskApp: FC = () => {
       document.documentElement.dataset.layout = d.tablet.layout ?? 'auto';
       configureApp({ tablet: d.tablet.name, screen: d.tablet.screen, pin: d.tablet.appPin });
       setHouses(d.houses || []); setTvs(d.tvs || []); setData(d); setError('');
+      setThemes(d.themes);
       sip.start(d.sip);
       setNotifyVolume(d.tablet.notifyVolume);
       setCurrent((c) => (d.dashboards.some((x) => x.id === c) ? c : d.dashboards[0]?.id || ''));

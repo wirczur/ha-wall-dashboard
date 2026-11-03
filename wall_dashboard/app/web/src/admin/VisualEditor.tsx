@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FC, type PointerEvent as RPE } from 'react';
 import type { DashboardDoc, ViewDef, WidgetDef, WidgetType } from '../../../shared/types';
 import { Icon } from '../ui/Icon';
-import { Background, TabBar, themeVars, tileStyle } from '../view/DashboardView';
+import { Background, TabBar, themeVars, lookVars, tileStyle } from '../view/DashboardView';
 import { WIDGETS } from '../widgets/widgets';
 import { DashboardInspector, WidgetInspector } from './Inspector';
 import { WidgetGallery } from './WidgetGallery';
@@ -155,7 +155,7 @@ const Canvas: FC<{
 
   return (
     <div className="ve-canvas-box" ref={box}>
-      <div className="ve-canvas" data-skin={look.skin} style={{ width: W, height: contentH, transform: `scale(${scale})`, ...themeVars(doc.theme, look.skin) }}
+      <div className="ve-canvas" data-skin={look.skin} data-theme={look.custom?.id} style={{ width: W, height: contentH, transform: `scale(${scale})`, ...lookVars(doc.theme, look) }}
         onPointerDown={() => onSelect(null)}>
         <div className={'dash embedded' + (tabs ? ' tabs-' + tabStyle + (floating ? ' tabs-float' : '') : '')} style={{ height: contentH }}>
           <Background theme={doc.theme} skin={look.skin} />

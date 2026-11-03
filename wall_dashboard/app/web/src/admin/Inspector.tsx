@@ -1,6 +1,7 @@
 import { useEffect, useState, type FC } from 'react';
 import type { HassState, SetStep, ActionDef, TriggerDef, DashboardDoc, PanelDef, PanelRow, RowDisplay, ThemeDef, ViewDef, WidgetDef, WidgetStyle, WidgetType } from '../../../shared/types';
 import { api } from '../lib/api';
+import { useThemes } from '../lib/themes';
 import { hass } from '../lib/hass';
 import { WIDGETS } from '../widgets/widgets';
 import { ClimateEditor } from './ClimateEditor';
@@ -598,6 +599,7 @@ export const DashboardInspector: FC<{
   doc: DashboardDoc; viewId: string; onChange(d: DashboardDoc): void; onSelectView(id: string): void;
 }> = ({ doc, viewId, onChange, onSelectView }) => {
   const view = doc.views.find((v) => v.id === viewId) ?? doc.views[0];
+  const ownThemes = useThemes();
   const setView = (p: Partial<ViewDef>) => onChange({ ...doc, views: doc.views.map((v) => (v.id === view.id ? { ...v, ...p } : v)) });
   const theme: Patch<ThemeDef> = (p) => onChange({ ...doc, theme: { ...doc.theme, ...p } });
   const bg = (p: Partial<ThemeDef['background']>) => theme({ background: { ...doc.theme.background, ...p } });
@@ -662,9 +664,10 @@ export const DashboardInspector: FC<{
       </Section>
 
       <Section title="Motyw">
-        <SelectF label="Wygląd" value={doc.theme.skin ?? 'glass'} onChange={(v) => theme({ skin: v === 'glass' ? undefined : v as ThemeDef['skin'], ...(v !== 'glass' && doc.theme.radius === 20 ? { radius: 16 } : {}) })}
-          options={SKINS as [string, string][]}
-          hint={doc.theme.skin && doc.theme.skin !== 'glass' ? 'Kolory pochodzą z wyglądu – akcent, tekst i krycie kafelków poniżej są pomijane.' : undefined} />
+        <SelectF label="Wygląd" value={doc.theme.custom ? 'own:' + doc.theme.custom : doc.theme.skin ?? 'glass'}
+          onChange={(v) => v.startsWith('own:') ? theme({ custom: v.slice(4) }) : theme({ custom: undefined, skin: v === 'glass' ? undefined : v as ThemeDef['skin'], ...(v !== 'glass' && doc.theme.radius === 20 ? { radius: 16 } : {}) })}
+          options={[...SKINS as [string, string][], ...ownThemes.map((t) => ['own:' + t.id, 'Mój: ' + t.name] as [string, string])]}
+          hint={doc.theme.custom ? (ownThemes.some((t) => t.id === doc.theme.custom) ? 'Własny motyw – kolory, kafelki i czcionkę zmienisz w zakładce Motywy.' : 'Tego motywu już nie ma – wybierz inny.') : doc.theme.skin && doc.theme.skin !== 'glass' ? 'Kolory pochodzą z wyglądu – akcent, tekst i krycie kafelków poniżej są pomijane.' : 'Własne motywy tworzysz w zakładce Motywy.'} />
         <CheckF label="Motywy okolicznościowe automatycznie" value={doc.theme.occasions} onChange={(v) => theme({ occasions: v || undefined })} />
         <p className="muted small">{'Święta 6.12–6.01 · Wielkanoc (od Niedzieli Palmowej do Poniedziałku Wielkanocnego) · Halloween 24–31.10 · Walentynki 10–14.02; poza tym „Wygląd” powyżej.' + (occasionFor(new Date()) ? ' Dziś: ' + SKINS.find(([k]) => k === occasionFor(new Date()))?.[1] : '')}</p>
         <SelectF label="Efekt w tle" value={doc.theme.effect ?? 'auto'} onChange={(v) => theme({ effect: v === 'auto' ? undefined : v as ThemeDef['effect'] })}

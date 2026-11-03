@@ -10,6 +10,8 @@ export function validateDashboard(input, id) {
     if (!Array.isArray(input.views) || input.views.length === 0)
         throw new Error('"views" musi być niepustą tablicą');
     const theme = { ...DEFAULT_THEME, ...(input.theme || {}), background: { ...DEFAULT_THEME.background, ...(input.theme?.background || {}) } };
+    if (theme.custom !== undefined && !(typeof theme.custom === 'string' && /^[\w-]{1,40}$/.test(theme.custom)))
+        delete theme.custom;
     const viewIds = new Set();
     const views = input.views.map((v, vi) => {
         const where = `views[${vi}]`;
