@@ -9,7 +9,7 @@ import zlib from 'node:zlib';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ENTITY_RE } from '../shared/types.js';
-import { HaClient } from './ha.js';
+import { HaClient, TV_EVENT } from './ha.js';
 import { log } from './log.js';
 import { checkKioskCall, entitiesOf, kioskScope, popupTriggersOf, streamName, streamsOf } from './permissions.js';
 import { emptyDashboard } from './seed.js';
@@ -20,7 +20,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -2056,6 +2056,71 @@ function cleanTrigger(x) {
         } : undefined
     };
 }
+// ---------------------------------------------------------------- TV in scenes (HA event wall_dashboard_tv, admin preview)
+function cleanTvStep(x) {
+    const def = store.data.tvs.find((t) => t.id === x?.tv || t.name.toLowerCase() === String(x?.tv ?? '').toLowerCase());
+    if (!def)
+        return null;
+    const power = x.power === 'on' || x.power === 'off' ? x.power : undefined;
+    const keys = (Array.isArray(x.keys) ? x.keys : typeof x.keys === 'string' ? x.keys.split(/[\s,]+/) : []).map(String).filter((k) => /^KEY_[A-Z0-9_]+$/.test(k)).slice(0, 10);
+    const app = typeof x.app === 'string' && x.app.trim() ? x.app.trim().slice(0, 80) : undefined;
+    return { tv: def.id, ...(power ? { power } : {}), ...(power !== 'off' && app ? { app } : {}), ...(power !== 'off' && keys.length ? { keys } : {}) };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function tvRun(x) {
+    const st = cleanTvStep(x);
+    if (!st)
+        throw new Error('nie ma takiego telewizora: ' + String(x?.tv));
+    const def = store.data.tvs.find((t) => t.id === st.tv), tv = tvs.get(st.tv);
+    let power = (await tv.status()).power;
+    if (st.power === 'off') {
+        if (power === 'on')
+            await tv.key('KEY_POWER');
+        log.info(`Telewizor ${def.name}: wyłącz`);
+        return;
+    }
+    if (st.power === 'on' && power !== 'on') {
+        await tv.power(); // standby → KEY_POWER, off → Wake-on-LAN
+        for (let i = 0; i < 25 && power !== 'on'; i++) {
+            await sleep(1000);
+            power = (await tv.status()).power;
+            if (power === 'standby' && i === 8)
+                await tv.key('KEY_POWER').catch(() => { });
+        }
+        if (power !== 'on')
+            throw new Error(`${def.name} nie włączył się (sprawdź MAC i „Włączanie przez sieć” w telewizorze)`);
+        await sleep(2500); // the TV takes a moment before it accepts apps
+    }
+    if (st.app) {
+        const a = def.apps.find((p) => p.appId === st.app || p.name.toLowerCase() === st.app.toLowerCase());
+        if (a?.via === 'source')
+            await tv.key(a.appId);
+        else
+            await tv.launch(a?.appId ?? st.app, a?.type);
+    }
+    for (const k of st.keys ?? []) {
+        await tv.key(k);
+        await sleep(450);
+    }
+    log.info(`Telewizor ${def.name}: ${[st.power === 'on' ? 'włącz' : '', st.app ? 'aplikacja ' + st.app : '', ...(st.keys ?? [])].filter(Boolean).join(', ')}`);
+}
+api.post('/tvs/run', asyncH(async (req, res) => {
+    const steps = (Array.isArray(req.body?.steps) ? req.body.steps : []).map(cleanTvStep).filter(Boolean);
+    const errors = [];
+    await Promise.all(steps.map((s) => tvRun(s).catch((e) => { errors.push(e.message); })));
+    res.json({ ok: !errors.length, errors });
+}));
+/** the scene's companion automation: when the scene is activated, the add-on gets the TV steps */
+const sceneTvId = (id) => (id + '_tv').slice(0, 64);
+async function sceneEntityOf(id) {
+    for (let i = 0; i < 20; i++) {
+        const s = [...(ha?.states.values() ?? [])].find((x) => x.entity_id.startsWith('scene.') && x.attributes?.id === id);
+        if (s)
+            return s.entity_id;
+        await sleep(250);
+    }
+    return null;
+}
 // ---------------------------------------------------------------- scenes & automations created step by step (HA config API)
 const cfgId = (v) => (typeof v === 'string' && /^[a-z0-9_]{3,64}$/.test(v) ? v : 'wd_' + Date.now().toString(36));
 async function haConfig(kind, id, method, body) {
@@ -2073,18 +2138,34 @@ api.get('/ha/automations', (_req, res) => {
     const states = [...(ha?.states.values() ?? [])];
     res.json({
         automations: states.filter((s) => s.entity_id.startsWith('automation.')).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, state: s.state, last_triggered: s.attributes.last_triggered })),
-        scenes: states.filter((s) => s.entity_id.startsWith('scene.')).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, entities: s.attributes.entity_id }))
+        scenes: states.filter((s) => s.entity_id.startsWith('scene.')).map((s) => ({ entity_id: s.entity_id, id: s.attributes.id, name: s.attributes.friendly_name ?? s.entity_id, entities: s.attributes.entity_id,
+            tv: !!s.attributes.id && states.some((a) => a.entity_id.startsWith('automation.') && a.attributes.id === sceneTvId(String(s.attributes.id))) }))
     });
 });
 api.post('/ha/scene', asyncH(async (req, res) => {
     const b = req.body || {};
     const entities = b.entities && typeof b.entities === 'object' ? b.entities : {};
-    if (!String(b.name ?? '').trim() || !Object.keys(entities).length || !Object.keys(entities).every((e) => ENTITY_RE.test(e)))
-        throw new Error('Scena wymaga nazwy i co najmniej jednej encji');
-    const id = cfgId(b.id);
-    await haConfig('scene', id, 'POST', { id, name: String(b.name).trim().slice(0, 80), ...(b.icon ? { icon: String(b.icon) } : {}), entities });
-    log.info(`Zapisano scenę „${b.name}” (${Object.keys(entities).length} encji)`);
-    res.json({ id });
+    const tvSteps = (Array.isArray(b.tvs) ? b.tvs : []).map(cleanTvStep).filter(Boolean);
+    if (!String(b.name ?? '').trim() || (!Object.keys(entities).length && !tvSteps.length) || !Object.keys(entities).every((e) => ENTITY_RE.test(e)))
+        throw new Error('Scena wymaga nazwy i co najmniej jednej encji lub telewizora');
+    const id = cfgId(b.id), name = String(b.name).trim().slice(0, 80);
+    await haConfig('scene', id, 'POST', { id, name, ...(b.icon ? { icon: String(b.icon) } : {}), entities });
+    let tvNote = '';
+    if (tvSteps.length) {
+        const ent = await sceneEntityOf(id);
+        if (!ent)
+            tvNote = ' Nie znalazłem encji sceny w HA – telewizor nie został dołączony.';
+        else {
+            await haConfig('automation', sceneTvId(id), 'POST', { id: sceneTvId(id), alias: `Scena „${name}” – telewizor`, description: 'Utworzone w Wall Dashboard: przy włączeniu sceny add-on steruje telewizorem (pilot Wall Dashboard).',
+                mode: 'restart', triggers: [{ trigger: 'state', entity_id: ent }],
+                conditions: [{ condition: 'template', value_template: "{{ trigger.from_state is not none and trigger.from_state.state != 'unavailable' and trigger.to_state.state not in ['unavailable', 'unknown'] }}" }],
+                actions: tvSteps.map((t) => ({ event: TV_EVENT, event_data: t })) });
+        }
+    }
+    else
+        await haConfig('automation', sceneTvId(id), 'DELETE').catch(() => { });
+    log.info(`Zapisano scenę „${name}” (${Object.keys(entities).length} encji, telewizory: ${tvSteps.length})`);
+    res.json({ id, note: tvNote || undefined });
 }));
 api.post('/ha/scene/apply', asyncH(async (req, res) => {
     const entities = req.body?.entities;
@@ -2108,6 +2189,8 @@ api.delete('/ha/:kind/:id', asyncH(async (req, res) => {
     if (!kind)
         return res.status(404).end();
     await haConfig(kind, req.params.id, 'DELETE');
+    if (kind === 'scene')
+        await haConfig('automation', sceneTvId(req.params.id), 'DELETE').catch(() => { }); // its TV automation, if any
     res.status(204).end();
 }));
 // devices of an integration with their entities (for the device / purifier widgets and discovery in the editor)
@@ -2351,6 +2434,7 @@ if (ha) {
     ha.on('popup', (data) => sendPopup(data));
     ha.on('snapshot', () => setTimeout(ivrWarmAll, 3000));
     ha.on('command', (d) => deviceCommand(d?.tablet ?? d?.tablets, d?.command, d?.value));
+    ha.on('tv', (d) => { tvRun(d).catch((e) => log.warn('Telewizor (zdarzenie ' + TV_EVENT + '): ' + e.message)); });
 }
 // ---------------------------------------------------------------- start
 const adminServer = http.createServer(admin);

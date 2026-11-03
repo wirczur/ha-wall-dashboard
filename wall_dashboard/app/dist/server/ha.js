@@ -4,6 +4,8 @@ import { log } from './log.js';
 export const POPUP_EVENT = 'wall_dashboard_popup';
 /** HA → panels: { tablet: name | id | 'all', command: reload | restart | screen-on | screen-off | saver | brightness, value?: 0–100 } */
 export const COMMAND_EVENT = 'wall_dashboard_command';
+/** Samsung TV of the add-on (remote): power / app / keys – fired e.g. by a scene's companion automation */
+export const TV_EVENT = 'wall_dashboard_tv';
 /**
  * Minimal Home Assistant websocket client.
  * Inside the add-on it talks to Core through the Supervisor proxy with SUPERVISOR_TOKEN;
@@ -90,6 +92,8 @@ export class HaClient extends EventEmitter {
                     this.emit('popup', ev.data ?? {}); });
                 await this.subscribe({ type: 'subscribe_events', event_type: COMMAND_EVENT }, (ev) => { if (ev?.event_type === COMMAND_EVENT)
                     this.emit('command', ev.data ?? {}); });
+                await this.subscribe({ type: 'subscribe_events', event_type: TV_EVENT }, (ev) => { if (ev?.event_type === TV_EVENT)
+                    this.emit('tv', ev.data ?? {}); });
                 const states = await this.cmd({ type: 'get_states' });
                 this.states.clear();
                 for (const s of states)

@@ -168,6 +168,8 @@ export type TvAction =
   | { action: 'app'; appId: string; appType?: number }
   | { action: 'power' }
   | { action: 'status' };
+/** what a scene does with a TV of the add-on (remote): power, then an app / source shortcut (name or id) and keys */
+export interface TvStep { tv: string; power?: 'on' | 'off'; app?: string; keys?: string[] }
 export interface TvStatus { power: 'on' | 'standby' | 'off'; name?: string; model?: string }
 
 // ---- 3D house (imported from SVG floor plans) — all lengths in metres, X = right, Z = down the plan

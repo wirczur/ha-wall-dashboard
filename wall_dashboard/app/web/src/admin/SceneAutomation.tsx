@@ -1,6 +1,6 @@
 // Scenes and automations created step by step, saved straight into Home Assistant (scenes.yaml / automations.yaml).
 import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
-import type { EntityInfo, HassState } from '../../../shared/types';
+import type { EntityInfo, HassState, TvDef, TvStep } from '../../../shared/types';
 import { api } from '../lib/api';
 import { domainOf } from '../lib/format';
 import { hass } from '../lib/hass';
@@ -8,7 +8,7 @@ import { serviceFor } from '../lib/setValue';
 import { Icon } from '../ui/Icon';
 import { EntityF, IconF, NumF, SelectF, TextF, useEntityList } from './fields';
 
-interface HaItem { entity_id: string; id?: string; name: string; state: string; last_triggered?: string; entities?: string[] }
+interface HaItem { entity_id: string; id?: string; name: string; state: string; last_triggered?: string; entities?: string[]; tv?: boolean }
 
 export const SceneAutomation: FC = () => {
   const [mode, setMode] = useState<'list' | 'scene' | 'automation'>('list');
@@ -58,7 +58,7 @@ export const SceneAutomation: FC = () => {
               {items.scenes.map((s) => (
                 <div key={s.entity_id} className="sa-it">
                   <Icon name="sun" size={18} />
-                  <div><b>{s.name}</b><small>{(s.entities ?? []).length} encji · <code>{s.entity_id}</code></small></div>
+                  <div><b>{s.name}</b><small>{(s.entities ?? []).length} encji{s.tv ? ' + telewizor' : ''} · <code>{s.entity_id}</code></small></div>
                   <button className="mini" title="Włącz scenę" onClick={() => run(hass.call('scene', 'turn_on', undefined, s.entity_id))}>▶</button>
                   {s.id && <button className="mini" title="Usuń" onClick={() => del('scene', s)}>×</button>}
                 </div>
@@ -119,6 +119,14 @@ const SceneWizard: FC<{ onCancel(): void; onDone(msg: string): void }> = ({ onCa
   const [states, setStates] = useState<Record<string, Record<string, unknown>>>({});
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /** TVs of the add-on (Telewizory / remote) – not HA entities, so they go into a companion automation */
+  const [tvList, setTvList] = useState<TvDef[]>([]);
+  const [tvs, setTvs] = useState<TvStep[]>([]);
+  useEffect(() => { api.get<TvDef[]>('tvs').then(setTvList).catch(() => {}); }, []);
+  const tvOf = (id: string) => tvList.find((t) => t.id === id);
+  const toggleTv = (id: string) => setTvs(tvs.some((t) => t.tv === id) ? tvs.filter((t) => t.tv !== id) : [...tvs, { tv: id, power: 'on' }]);
+  const setTv = (id: string, p: Partial<TvStep>) => setTvs(tvs.map((t) => (t.tv === id ? Object.fromEntries(Object.entries({ ...t, ...p }).filter(([, v]) => v !== undefined && v !== '')) as unknown as TvStep : t)));
+  const tvText = (t: TvStep) => [t.power === 'on' ? 'włącz' : t.power === 'off' ? 'wyłącz' : '', t.app ? (tvOf(t.tv)?.apps.find((a) => a.appId === t.app)?.name ?? t.app) : '', ...(t.keys ?? [])].filter(Boolean).join(' → ') || 'bez zmian';
 
   const cand = useMemo(() => all.filter((e) => SCENE_DOMAINS.includes(e.domain) && (!dom || e.domain === dom) &&
     (!q || (e.name + ' ' + e.entity_id + ' ' + (e.area ?? '')).toLowerCase().includes(q.toLowerCase()))), [all, q, dom]);
@@ -134,14 +142,23 @@ const SceneWizard: FC<{ onCancel(): void; onDone(msg: string): void }> = ({ onCa
 
   const save = async () => {
     setBusy(true); setErr('');
-    try { await api.post('ha/scene', { name, icon, entities: scene() }); onDone(`Scena „${name}” zapisana w Home Assistant.`); }
+    try {
+      const r = await api.post<{ note?: string }>('ha/scene', { name, icon, entities: scene(), tvs });
+      onDone(`Scena „${name}” zapisana w Home Assistant.${tvs.length ? ' Telewizor steruje automatyzacja „Scena „' + name + '” – telewizor” (włącza się razem ze sceną).' : ''}${r.note ?? ''}`);
+    }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
-  const preview = async () => { setErr(''); try { await api.post('ha/scene/apply', { entities: scene() }); } catch (e: any) { setErr(e.message); } };
+  const preview = async () => {
+    setErr('');
+    try {
+      if (sel.length) await api.post('ha/scene/apply', { entities: scene() });
+      if (tvs.length) { const r = await api.post<{ errors: string[] }>('tvs/run', { steps: tvs }); if (r.errors.length) setErr('Telewizor: ' + r.errors.join('; ')); }
+    } catch (e: any) { setErr(e.message); }
+  };
 
   return (
     <Steps title="Nowa scena" steps={['Nazwa', 'Urządzenia', 'Ustawienia', 'Zapis']} step={step} setStep={(n) => { if (n === 2) goStates(); setStep(n); }} onCancel={onCancel}
-      canNext={step === 0 ? !!name.trim() : step === 1 ? sel.length > 0 : true}
+      canNext={step === 0 ? !!name.trim() : step === 1 ? sel.length + tvs.length > 0 : true}
       finish={<button className="btn primary" disabled={busy} onClick={save}>{busy ? 'Zapisuję…' : 'Zapisz scenę w HA'}</button>}>
       {step === 0 && <div className="wiz-narrow">
         <TextF label="Nazwa sceny" value={name} onChange={(v) => setName(v ?? '')} placeholder="np. Wieczór filmowy" />
@@ -153,9 +170,13 @@ const SceneWizard: FC<{ onCancel(): void; onDone(msg: string): void }> = ({ onCa
           <input placeholder="Szukaj: salon, lampa, roleta…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Szukaj encji" />
           <div className="app-chips"><button className={'chip' + (!dom ? ' on' : '')} onClick={() => setDom('')}>wszystkie</button>
             {SCENE_DOMAINS.filter((d) => all.some((e) => e.domain === d)).map((d) => <button key={d} className={'chip' + (dom === d ? ' on' : '')} onClick={() => setDom(d)}>{DOM_PL[d] ?? d}</button>)}</div>
-          <span className="muted">wybrano {sel.length}</span>
+          <span className="muted">wybrano {sel.length + tvs.length}</span>
         </div>
         <div className="wiz-areas">
+          {tvList.length > 0 && <fieldset className="field">
+            <legend>Telewizory (pilot Wall Dashboard)</legend>
+            {tvList.map((t) => <label key={t.id} className="check"><input type="checkbox" checked={tvs.some((x) => x.tv === t.id)} onChange={() => toggleTv(t.id)} />{t.name} <small className="muted">· {t.model || t.host}</small></label>)}
+          </fieldset>}
           {byArea.map(([area, list]) => (
             <fieldset key={area} className="field">
               <legend>{area} <button className="mini" onClick={() => { const ids = list.map((e) => e.entity_id); const allOn = ids.every((i) => sel.includes(i)); setSel(allOn ? sel.filter((x) => !ids.includes(x)) : [...new Set([...sel, ...ids])]); }}>wszystkie</button></legend>
@@ -171,11 +192,14 @@ const SceneWizard: FC<{ onCancel(): void; onDone(msg: string): void }> = ({ onCa
         </div>
         <div className="wiz-rows">
           {sel.map((e) => <SceneRow key={e} entity={e} st={states[e] ?? {}} set={(p) => setSt(e, p)} capture={() => setStates({ ...states, [e]: captureState(hass.states.get(e)) })} />)}
+          {tvs.map((t) => { const def = tvOf(t.tv); return def && <TvRow key={t.tv} def={def} st={t} set={(p) => setTv(t.tv, p)} />; })}
         </div>
       </>}
       {step === 3 && <div className="wiz-narrow">
         <h3>{name}</h3>
-        <ul className="wiz-sum">{sel.map((e) => <li key={e}><b>{String(hass.states.get(e)?.attributes.friendly_name ?? e)}</b> → {stateText(states[e] ?? {})}</li>)}</ul>
+        <ul className="wiz-sum">{sel.map((e) => <li key={e}><b>{String(hass.states.get(e)?.attributes.friendly_name ?? e)}</b> → {stateText(states[e] ?? {})}</li>)}
+          {tvs.map((t) => <li key={t.tv}><b>{tvOf(t.tv)?.name ?? t.tv}</b> (telewizor) → {tvText(t)}</li>)}</ul>
+        {tvs.length > 0 && <p className="muted small">Telewizory z pilota Wall Dashboard nie są encjami HA, więc obok sceny powstanie automatyzacja <b>„Scena „{name}” – telewizor”</b>: gdy scenę włączysz (z tabletu, z HA, głosem), add-on wykona kroki telewizora. Usunięcie sceny tutaj usuwa też tę automatyzację.</p>}
         <p className="muted">Scena trafi do <code>scenes.yaml</code> w Home Assistant i pojawi się jako <code>scene.{name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}</code>.</p>
       </div>}
       {err && <p className="err">{err}</p>}
@@ -211,6 +235,29 @@ const SceneRow: FC<{ entity: string; st: Record<string, unknown>; set(p: Record<
         {d === 'media_player' && on && <NumF label="Głośność %" value={st.volume_level != null ? Math.round(Number(st.volume_level) * 100) : undefined} min={0} max={100} onChange={(v) => set({ volume_level: v != null ? v / 100 : undefined })} />}
         {d === 'fan' && on && <NumF label="Prędkość %" value={st.percentage as number | undefined} min={0} max={100} onChange={(v) => set({ percentage: v })} />}
       </div>
+    </div>
+  );
+};
+
+const INPUTS: [string, string][] = [['', '— bez zmiany —'], ['KEY_TV', 'Telewizja (tuner)'], ['KEY_HDMI1', 'HDMI 1'], ['KEY_HDMI2', 'HDMI 2'], ['KEY_HDMI3', 'HDMI 3'], ['KEY_HDMI4', 'HDMI 4']];
+/** one add-on TV in a scene: power, then an app (shortcut from Telewizory) or an input, plus extra keys */
+const TvRow: FC<{ def: TvDef; st: TvStep; set(p: Partial<TvStep>): void }> = ({ def, st, set }) => {
+  const input = st.keys?.find((k) => INPUTS.some(([v]) => v === k)) ?? '';
+  const extra = (st.keys ?? []).filter((k) => k !== input);
+  const [raw, setRaw] = useState(extra.join(' '));
+  return (
+    <div className="wiz-row">
+      <div className="wiz-row-h"><b>{def.name}</b><small className="muted">telewizor · {def.host}</small></div>
+      <div className="wiz-row-c">
+        <SelectF label="Zasilanie" value={st.power ?? ''} options={[['on', 'Włącz'], ['off', 'Wyłącz'], ['', 'Bez zmiany']]} onChange={(v) => set({ power: (v || undefined) as TvStep['power'], ...(v === 'off' ? { app: undefined, keys: undefined } : {}) })} />
+        {st.power !== 'off' && <>
+          <SelectF label="Aplikacja" value={st.app ?? ''} options={[['', '— bez zmiany —'], ...def.apps.map((a) => [a.appId, a.name] as [string, string])]} onChange={(v) => set({ app: v || undefined })}
+            hint={def.apps.length ? undefined : 'Dodaj skróty aplikacji w Telewizory.'} />
+          <SelectF label="Wejście" value={input} options={INPUTS} onChange={(v) => set({ keys: [...(v ? [v] : []), ...extra] })} />
+          <TextF label="Dodatkowe klawisze" value={raw} placeholder="np. KEY_VOLDOWN KEY_VOLDOWN" hint="Klawisze pilota Samsung, wysyłane po kolei po aplikacji / wejściu." onChange={(v) => { setRaw(String(v ?? '').toUpperCase()); set({ keys: [...(input ? [input] : []), ...String(v ?? '').toUpperCase().split(/[\s,]+/).filter((k) => /^KEY_[A-Z0-9_]+$/.test(k))] }); }} />
+        </>}
+      </div>
+      {st.power === 'on' && !def.mac && <p className="muted small">Bez adresu MAC (Telewizory) całkiem wyłączonego telewizora nie da się włączyć – zadziała tylko z czuwania.</p>}
     </div>
   );
 };

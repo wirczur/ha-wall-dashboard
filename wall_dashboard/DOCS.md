@@ -263,6 +263,20 @@ Wybudzanie w **Fully Kiosk Browser**: *Settings → Advanced Web Settings → En
 
 Zakładka **Sceny i automatyzacje** zapisuje bezpośrednio w HA (`scenes.yaml`, `automations.yaml` – standardowa konfiguracja HA je dołącza). Po zapisie add-on przeładowuje sceny/automatyzacje.
 
+**Telewizor w scenie.** W kroku *Urządzenia* zaznacz telewizor z sekcji *Telewizory (pilot Wall Dashboard)*, a w kroku *Ustawienia* wybierz: zasilanie (włącz / wyłącz), aplikację (skróty z zakładki Telewizory), wejście (TV, HDMI 1–4) i ewentualnie dodatkowe klawisze pilota (np. `KEY_VOLDOWN`). Telewizory z pilota nie są encjami HA, dlatego obok sceny powstaje automatyzacja **„Scena „…” – telewizor”**: gdy scena się włączy (z tabletu, z HA, głosem), wysyła zdarzenie `wall_dashboard_tv`, a add-on steruje telewizorem. Całkiem wyłączony telewizor włącza się przez Wake-on-LAN – wymaga adresu MAC w zakładce Telewizory. Usunięcie sceny w Wall Dashboard usuwa też jej automatyzację.
+
+To samo zdarzenie możesz wysłać z własnej automatyzacji lub skryptu:
+```yaml
+action: event.fire        # w automatyzacji: event
+data:
+  event_type: wall_dashboard_tv
+  event_data:
+    tv: "TV Salon"          # nazwa albo id telewizora z zakładki Telewizory
+    power: "on"             # on | off (opcjonalnie)
+    app: "Netflix"          # nazwa skrótu albo appId (opcjonalnie)
+    keys: [KEY_HDMI1]       # klawisze pilota po kolei (opcjonalnie)
+```
+
 ## Dyson, AGD Samsung (LocalThings), Scheduler, Satel
 
 - **Oczyszczacz (Dyson)**: „Wykryj urządzenie Dyson” wypełnia encje z integracji hass-dyson.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+- **Telewizor w scenie**: w kreatorze sceny można dodać telewizor z pilota Wall Dashboard – włącz / wyłącz, aplikacja, wejście (TV, HDMI 1–4), dodatkowe klawisze. Obok sceny powstaje automatyzacja „Scena „…” – telewizor”, która przy włączeniu sceny wysyła zdarzenie `wall_dashboard_tv`; add-on wykonuje kroki (z Wake-on-LAN, gdy telewizor jest wyłączony). „Podgląd – ustaw teraz w domu” steruje też telewizorem.
+- Nowe zdarzenie HA `wall_dashboard_tv` do sterowania telewizorem z własnych automatyzacji i skryptów.
+
 ## 1.3.0
 - **Nowy panel zarządzania**: menu z boku zamiast zakładek u góry (Wygląd / Urządzenia / Dzwonek i automatyka / System), działa też na telefonie.
 - **Stan** – strona startowa: panele online, centrala SIP, dzwonki z dziś, tryb ciszy, ostatnie dzwonki i lista „Wymaga uwagi” (panel offline, stara aplikacja Android, panel niezarejestrowany w centrali, brak HTTPS, go2rtc nie odpowiada).
