@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC } from 'react';
-import type { DashboardDoc } from '../../../shared/types';
+import type { DashboardDoc, TabletLive } from '../../../shared/types';
+import { SKINS, type Skin } from '../lib/occasion';
 import { api } from '../lib/api';
 import { Icon } from '../ui/Icon';
 import { DashboardView } from '../view/DashboardView';
@@ -14,7 +15,10 @@ export const DashboardEditor: FC<{ id: string; onBack(): void }> = ({ id, onBack
   const [doc, setDoc] = useState<DashboardDoc | null>(null);
   const [saved, setSaved] = useState('');
   const [mode, setMode] = useState<Mode>('visual');
-  const [size, setSize] = useState<SizeKey>('tablet');
+  const [size, setSize] = useState<SizeKey>(() => (sessionStorage.getItem('wd.size') as SizeKey) || 'tablet');
+  useEffect(() => { try { sessionStorage.setItem('wd.size', size); } catch { /* */ } }, [size]);
+  const [occasion, setOccasion] = useState<Skin | ''>('');
+  const [onTablet, setOnTablet] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const undo = useRef<string[]>([]);
   const redo = useRef<string[]>([]);
@@ -89,17 +93,44 @@ export const DashboardEditor: FC<{ id: string; onBack(): void }> = ({ id, onBack
             <button key={k} aria-pressed={mode === k} onClick={() => setMode(k)}>{l}</button>)}
         </div>
         <div className="seg" role="group" aria-label="Rozmiar ekranu">
-          {(Object.keys(SIZES) as SizeKey[]).map((k) => <button key={k} aria-pressed={size === k} onClick={() => setSize(k)}>{SIZES[k][2]}</button>)}
+          {(Object.keys(SIZES) as SizeKey[]).map((k) => <button key={k} aria-pressed={size === k} onClick={() => setSize(k)} title={SIZES[k][2]}>{SIZES[k][2].replace('Tablet ', '')}</button>)}
         </div>
+        <select className="e-occ" value={occasion} onChange={(e) => setOccasion(e.target.value as Skin | '')} aria-label="Podgląd motywu okolicznościowego" title="Tylko podgląd w edytorze – nie zmienia dashboardu">
+          <option value="">Bez okazji</option>
+          {SKINS.filter(([k]) => ['swieta', 'wielkanoc', 'halloween', 'walentynki'].includes(k)).map(([k, l]) => <option key={k} value={k}>Podgląd: {l.split(' – ')[0]}</option>)}
+        </select>
         <button className="btn" disabled={!undo.current.length} onClick={doUndo} title="Ctrl+Z">Cofnij</button>
         <button className="btn" disabled={!redo.current.length} onClick={doRedo} title="Ctrl+Y">Ponów</button>
+        <div className="db-more">
+          <button className="btn" onClick={() => setOnTablet(!onTablet)} aria-expanded={onTablet} title="Pokaż tę wersję (także niezapisaną) na tablecie przez 3 minuty"><Icon name="mdi:tablet-cellphone" size={16} />Na tablecie</button>
+          {onTablet && <TabletPreview doc={doc} onDone={(t) => { setOnTablet(false); if (t) setMsg({ kind: t.startsWith('!') ? 'err' : 'ok', text: t.replace(/^!/, '') }); }} />}
+        </div>
         <button className="btn primary" disabled={!dirty} onClick={save} title="Ctrl+S">Zapisz</button>
       </header>
       {msg && <p className={msg.kind === 'err' ? 'err' : 'ok'} role="status">{msg.text}</p>}
 
-      {mode === 'visual' && <VisualEditor doc={doc} onChange={change} size={size} />}
+      {mode === 'visual' && <VisualEditor doc={doc} onChange={change} size={size} occasion={occasion || undefined} />}
       {mode === 'json' && <JsonPane doc={doc} onChange={change} size={size} />}
       {mode === 'preview' && <div className="e-preview full"><Preview doc={doc} size={size} /></div>}
+    </div>
+  );
+};
+
+/** pick an online tablet and show the draft there for 3 minutes */
+const TabletPreview: FC<{ doc: DashboardDoc; onDone(msg?: string): void }> = ({ doc, onDone }) => {
+  const [list, setList] = useState<TabletLive[] | null>(null);
+  useEffect(() => { api.get<TabletLive[]>('tablets').then(setList).catch(() => setList([])); }, []);
+  const send = async (t: TabletLive) => {
+    try {
+      const r = await api.post<{ delivered: number }>('tablets/' + t.id + '/preview', { doc, minutes: 3 });
+      onDone(r.delivered ? `„${t.name}” pokazuje tę wersję przez 3 minuty (dotknięcie banera wraca wcześniej).` : `!„${t.name}” nie jest teraz połączony.`);
+    } catch (e: any) { onDone('!' + e.message); }
+  };
+  return (
+    <div className="db-menu" onMouseLeave={() => onDone()}>
+      {!list && <span className="muted small" style={{ padding: 8 }}>Ładowanie…</span>}
+      {list?.filter((t) => t.online).map((t) => <button key={t.id} onClick={() => send(t)}><i className="dot ok" />{t.name}</button>)}
+      {list && !list.some((t) => t.online) && <span className="muted small" style={{ padding: 8 }}>Żaden tablet nie jest teraz połączony.</span>}
     </div>
   );
 };

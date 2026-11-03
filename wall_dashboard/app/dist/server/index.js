@@ -11,7 +11,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ENTITY_RE } from '../shared/types.js';
 import { HaClient } from './ha.js';
 import { log } from './log.js';
-import { checkKioskCall, kioskScope, popupTriggersOf, streamName, streamsOf } from './permissions.js';
+import { checkKioskCall, entitiesOf, kioskScope, popupTriggersOf, streamName, streamsOf } from './permissions.js';
 import { emptyDashboard } from './seed.js';
 import { DATA_DIR, MEDIA_DIR, Store, newId, newKey } from './store.js';
 import { validateDashboard } from './validate.js';
@@ -20,7 +20,9 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
+/** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
+const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
 const KIOSK_PORT = Number(process.env.KIOSK_PORT || 8100);
 const IN_ADDON = !!process.env.SUPERVISOR_TOKEN;
@@ -446,7 +448,7 @@ api.post('/tvs/:id/pair', asyncH(async (req, res) => {
 }));
 api.get('/tvs/:id/apps', asyncH(async (req, res) => { res.json(await tvs.get(req.params.id).installedApps()); }));
 api.get('/tvs/:id/status', asyncH(async (req, res) => { res.json(await tvs.get(req.params.id).status()); }));
-api.get('/tablets', (_req, res) => res.json(store.data.tablets.map((t) => ({ ...t, quietNow: quietState(t) }))));
+api.get('/tablets', (_req, res) => res.json(store.data.tablets.map((t) => ({ ...t, ...presence(t) }))));
 api.post('/tablets', (req, res) => {
     const first = Object.keys(store.data.dashboards)[0];
     const t = { id: newId(), name: String(req.body?.name || 'Nowy tablet').slice(0, 60), key: newKey(), dashboards: first ? [first] : [] };
@@ -1015,6 +1017,7 @@ function attachWs(server, mode) {
             }
             const sc = kioskScope(store, t);
             client = { mode, tabletId: t.id, allowed: withSchedules(sc.entities, sc.schedules), tvs: sc.tvs, schedules: sc.schedules };
+            seenUpdate(t.id, url.searchParams.get('app'), url.searchParams.get('scr'));
         }
         wss.handleUpgrade(req, socket, head, (ws) => {
             const c = { ws, ...client };
@@ -1029,6 +1032,8 @@ function attachWs(server, mode) {
             ws.on('message', (raw) => onClientMessage(c, raw.toString()));
             ws.on('close', () => {
                 clients.delete(c);
+                if (c.tabletId)
+                    seenGone(c.tabletId);
                 intercomGone(c);
                 for (const sub of c.rtc?.values() ?? [])
                     ha?.unsubscribe(sub);
@@ -1869,6 +1874,8 @@ function sipLinkFor(t) {
             return true;
         },
         onDown(m) {
+            if (m.status === 200 && m.cseq === 'REGISTER')
+                sipReg.set(t.id, Date.now());
             if (m.method === 'INVITE' && !own.has(m.callId)) {
                 own.add(m.callId);
                 sipRing(t.id, m);
@@ -1915,9 +1922,12 @@ function sipLinkFor(t) {
             }
         },
         onClose() { for (const id of own)
-            sipLegEnd(id); }
+            sipLegEnd(id); if (![...sipLinks].some((l) => l.tabletId === t.id))
+            sipReg.delete(t.id); }
     };
 }
+/** tablets whose SIP phone is registered on the PBX right now (time of the last 200 OK to REGISTER) */
+const sipReg = new Map();
 function sipPickupEnd(callId) { if (sipPickups.delete(callId))
     sipLegEnd(callId); }
 // ---------------------------------------------------------------- quiet mode per panel
@@ -2178,6 +2188,146 @@ function onlineTablets() {
     return [...out];
 }
 api.get('/tablets-online', (_req, res) => res.json(onlineTablets()));
+// ---------------------------------------------------------------- presence + status page of the admin
+/** online since (in memory) per tablet */
+const onlineSince = new Map();
+const kioskOnline = (id) => [...clients].some((x) => x.mode === 'kiosk' && x.tabletId === id);
+function seenUpdate(id, app, scr) {
+    const t = store.tablet(id);
+    if (!t)
+        return;
+    if (!onlineSince.has(id))
+        onlineSince.set(id, Date.now());
+    const a = (app ?? '').replace(/[^\w.:+ -]/g, '').slice(0, 40) || undefined;
+    const sc = /^\d{2,5}x\d{2,5}$/.test(scr ?? '') ? scr : undefined;
+    const prev = t.seen;
+    if (prev?.app === a && prev?.screen === sc)
+        return;
+    t.seen = { at: Date.now(), ...(a ? { app: a } : {}), ...(sc ? { screen: sc } : {}) };
+    store.write();
+}
+function seenGone(id) {
+    setTimeout(() => {
+        if (kioskOnline(id))
+            return;
+        onlineSince.delete(id);
+        const t = store.tablet(id);
+        if (!t)
+            return;
+        t.seen = { ...(t.seen ?? {}), at: Date.now() };
+        store.write();
+    }, 1500); // a reload reconnects within a moment – not "offline"
+}
+/** live state of a tablet for the admin */
+function presence(t) {
+    const online = kioskOnline(t.id);
+    return { online, since: online ? onlineSince.get(t.id) : undefined, lastSeen: online ? Date.now() : t.seen?.at, app: t.seen?.app, display: t.seen?.screen,
+        sipRegistered: t.sip ? sipReg.has(t.id) : undefined, quietNow: quietState(t) };
+}
+const verLess = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++)
+    if ((x[i] || 0) !== (y[i] || 0))
+        return (x[i] || 0) < (y[i] || 0); return false; };
+let pbxCache = null;
+function pbxProbe() {
+    const cfg = store.data.settings.sip;
+    if (!cfg?.enabled || !cfg.ws)
+        return Promise.resolve({ ok: false, err: 'wyłączona' });
+    if ([...sipLinks].length && sipReg.size)
+        return Promise.resolve({ ok: true });
+    if (pbxCache && Date.now() - pbxCache.at < 30_000)
+        return Promise.resolve(pbxCache);
+    return new Promise((resolve) => {
+        let done = false;
+        const fin = (ok, err) => { if (done)
+            return; done = true; pbxCache = { at: Date.now(), ok, err }; try {
+            ws.terminate();
+        }
+        catch { /* */ } resolve({ ok, err }); };
+        const ws = new WebSocket(cfg.ws, 'sip', { rejectUnauthorized: !!cfg.tlsVerify, handshakeTimeout: 3000 });
+        ws.on('open', () => fin(true));
+        ws.on('error', (e) => fin(false, e.message));
+        ws.on('unexpected-response', (_q, r) => fin(false, 'HTTP ' + r.statusCode));
+        setTimeout(() => fin(false, 'brak odpowiedzi'), 3500);
+    });
+}
+let g2Cache = null;
+async function go2rtcProbe() {
+    if (g2Cache && Date.now() - g2Cache.at < 30_000)
+        return g2Cache;
+    const r = await fetch(`${go2rtcBase()}/api/streams`, { signal: AbortSignal.timeout(2500) }).catch(() => null);
+    const streams = r && r.ok ? Object.keys(await r.json().catch(() => ({}))).length : 0;
+    g2Cache = { at: Date.now(), ok: !!r?.ok, streams };
+    return g2Cache;
+}
+/** does any dashboard / trigger use go2rtc at all (otherwise "go2rtc does not answer" is no warning) */
+const usesGo2rtc = () => Object.values(store.data.dashboards).some((d) => streamsOf(d).length) || (store.data.triggers ?? []).some((t) => t.popup?.go2rtc?.stream);
+api.get('/status', asyncH(async (_req, res) => {
+    const sip = store.data.settings.sip;
+    const [pbx, g2] = await Promise.all([pbxProbe(), usesGo2rtc() ? go2rtcProbe() : Promise.resolve(null)]);
+    const tablets = store.data.tablets.map((t) => ({ id: t.id, name: t.name, phone: !!t.phone, ext: t.sip?.ext, ...presence(t) }));
+    const warnings = [];
+    if (!ha?.connected)
+        warnings.push({ level: 'err', title: 'Brak połączenia z Home Assistant', text: 'Tablety nie dostają stanów encji. Sprawdź, czy HA działa, i uruchom add-on ponownie.', page: 'settings' });
+    for (const t of tablets) {
+        const full = store.tablet(t.id);
+        if (!t.online && !t.phone && t.lastSeen)
+            warnings.push({ level: 'err', title: `Tablet „${t.name}” nie odpowiada`, text: `Ostatnio widziany ${new Date(t.lastSeen).toLocaleString('pl-PL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}. Sprawdź Wi-Fi albo zasilanie.`, page: 'tablets', tablet: t.id });
+        if (!t.lastSeen && !t.phone)
+            warnings.push({ level: 'warn', title: `Tablet „${t.name}” jeszcze się nie połączył`, text: 'Otwórz jego link na tablecie albo sparuj aplikację kodem.', page: 'tablets', tablet: t.id });
+        const v = /^wa:(\d+\.\d+\.\d+)/.exec(t.app ?? '')?.[1];
+        if (v && verLess(v, LATEST_APP))
+            warnings.push({ level: 'warn', title: `„${t.name}” ma starą aplikację (${v})`, text: `Dostępna jest wersja ${LATEST_APP}. Zainstaluj nowy plik APK (adb install -r).`, page: 'tablets', tablet: t.id });
+        if (sip?.enabled && full.sip && t.online && !t.sipRegistered)
+            warnings.push({ level: 'warn', title: `„${t.name}” nie jest zarejestrowany w centrali (${full.sip.ext})`, text: 'Sprawdź numer i hasło SIP oraz czy kiosk działa po HTTPS.', page: 'tablets', tablet: t.id });
+        if (!full.dashboards.length)
+            warnings.push({ level: 'warn', title: `„${t.name}” nie ma dashboardu`, text: 'Przypisz mu dashboard – inaczej pokaże pusty ekran.', page: 'tablets', tablet: t.id });
+    }
+    if (sip?.enabled && !pbx.ok)
+        warnings.push({ level: 'err', title: 'Centrala SIP nie odpowiada', text: `${sip.ws}: ${pbx.err ?? 'brak połączenia'}. Dzwonek z furtki nie dotrze do paneli.`, page: 'door' });
+    if (g2 && !g2.ok)
+        warnings.push({ level: 'warn', title: 'go2rtc nie odpowiada', text: `${go2rtcBase()} – kamery „Bezpośrednio go2rtc” i rozmowa z domofonem nie działają.`, page: 'settings' });
+    const needMic = sip?.enabled || store.data.tablets.some((t) => t.intercom !== false);
+    if (!kioskTls && needMic)
+        warnings.push({ level: 'warn', title: 'Kiosk działa bez HTTPS', text: 'Bez HTTPS przeglądarka tabletu nie da mikrofonu – interkom i rozmowa z furtką działają tylko w jedną stronę. Włącz „ssl” w konfiguracji add-onu.', page: 'settings' });
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    const calls = store.data.calls ?? [];
+    const today = calls.filter((c) => c.at >= day.getTime());
+    res.json({
+        version: VERSION, latestApp: LATEST_APP, ha: !!ha?.connected, https: kioskTls,
+        sip: sip?.enabled ? { ok: pbx.ok, err: pbx.err, ws: sip.ws, doors: (sip.doors ?? []).map((d) => d.number).filter(Boolean), registered: tablets.filter((t) => t.sipRegistered).map((t) => t.ext) } : null,
+        go2rtc: g2 ? { ok: g2.ok, streams: g2.streams } : null,
+        tablets, warnings,
+        calls: { today: today.length, missedToday: today.filter((c) => c.status === 'missed').length, missed: missedCount(), last: calls.slice(0, 8).map((c) => ({ ...c, byName: c.by ? store.tablet(c.by)?.name ?? c.by : undefined })) },
+        quiet: tablets.filter((t) => t.quietNow?.on).map((t) => ({ name: t.name, until: t.quietNow?.until }))
+    });
+}));
+/** "Preview on tablet": the editor's unsaved draft shown on one tablet for a while (then its own dashboards come back) */
+api.post('/tablets/:id/preview', (req, res) => {
+    const t = store.tablet(req.params.id);
+    if (!t)
+        return res.status(404).json({ error: 'Nie ma takiego tabletu' });
+    let doc;
+    try {
+        doc = validateDashboard(req.body?.doc, String(req.body?.doc?.id || 'preview'));
+    }
+    catch (e) {
+        return res.status(400).json({ error: e.message });
+    }
+    const minutes = Math.max(1, Math.min(30, Number(req.body?.minutes) || 3));
+    let delivered = 0;
+    for (const c of kioskClientsOf(t.id)) {
+        // the draft may show entities the tablet's own dashboards don't – allow them until the next scope refresh
+        const extra = new Set([...entitiesOf(doc)].filter((e) => !c.allowed?.has(e) && !c.extra?.has(e)));
+        c.extra = new Set([...(c.extra ?? []), ...extra]);
+        setTimeout(() => { for (const e of extra)
+            c.extra?.delete(e); }, minutes * 60_000 + 5000);
+        send(c, { type: 'states', states: visibleStates(c).concat(ha ? [...ha.states.values()].filter((s) => extra.has(s.entity_id) && !c.allowed?.has(s.entity_id)) : []) });
+        send(c, { type: 'preview', doc, until: Date.now() + minutes * 60_000 });
+        delivered++;
+    }
+    res.json({ delivered });
+});
 if (ha) {
     ha.on('snapshot', () => { for (const s of ha.states.values())
         lastState.set(s.entity_id, s.state); });
@@ -2204,6 +2354,7 @@ if (ha) {
 }
 // ---------------------------------------------------------------- start
 const adminServer = http.createServer(admin);
+let kioskTls = false;
 const kioskServer = createKioskServer();
 attachWs(adminServer, 'admin');
 attachWs(kioskServer, 'kiosk');
@@ -2224,6 +2375,7 @@ function createKioskServer() {
         try {
             const srv = https.createServer({ cert: fs.readFileSync(path.join(dir, o.certfile || 'fullchain.pem')), key: fs.readFileSync(path.join(dir, o.keyfile || 'privkey.pem')) }, kiosk);
             log.info('Kiosk: HTTPS włączony');
+            kioskTls = true;
             return srv;
         }
         catch (e) {

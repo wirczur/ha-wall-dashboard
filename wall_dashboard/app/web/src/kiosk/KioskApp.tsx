@@ -24,6 +24,14 @@ export const KioskApp: FC = () => {
   const [data, setData] = useState<KioskData | null>(null);
   const [current, setCurrent] = useState<string>('');
   const [error, setError] = useState('');
+  /** "Podgląd na tablecie" from the editor: a draft shown until the given time */
+  const [preview, setPreview] = useState<{ doc: DashboardDoc; until: number } | null>(null);
+  useEffect(() => hass.onPreview((doc, until) => setPreview({ doc, until })), []);
+  useEffect(() => {
+    if (!preview) return;
+    const t = setTimeout(() => setPreview(null), Math.max(0, preview.until - Date.now()));
+    return () => clearTimeout(t);
+  }, [preview]);
 
   const load = useCallback(() => {
     api.get<KioskData>('kiosk').then((d) => {
@@ -60,10 +68,11 @@ export const KioskApp: FC = () => {
   if (!boot.key) return <Message title="Nieprawidłowy klucz tabletu" text="Ten link nie jest (lub już nie jest) przypisany do żadnego tabletu. Skopiuj aktualny link z panelu Wall Dashboard w Home Assistant." />;
   if (error && !data) return <Message title="Nie udało się wczytać dashboardu" text={error} />;
   if (!data) return <Message title="Ładowanie…" text="" />;
-  const doc = data.dashboards.find((d) => d.id === current);
+  const doc = preview?.doc ?? data.dashboards.find((d) => d.id === current);
   if (!doc) return <Message title="Brak dashboardu" text={`Tablet „${data.tablet.name}” nie ma przypisanego dashboardu. Przypisz go w panelu Wall Dashboard.`} />;
   return <>
-    {!paused && <DashboardView key={doc.id} doc={doc} onDashboard={(id) => {
+    {preview && <button className="pv-banner" onClick={() => setPreview(null)}>Podgląd z edytora · dotknij, aby wrócić</button>}
+    {!paused && <DashboardView key={(preview ? 'pv:' + preview.until + ':' : '') + doc.id} doc={doc} onDashboard={(id) => {
       if (data.dashboards.some((d) => d.id === id)) setCurrent(id);
     }} />}
     {isWallApp() && <SaverFeed clock={data.tablet.screen?.clock} />}

@@ -15,22 +15,25 @@ Dashboardy na tablety ścienne. Dwa wejścia do jednego add-onu:
 
 Po instalacji włącz **Pokaż na pasku bocznym** i uruchom. Przy pierwszym starcie add-on tworzy pusty dashboard **Mój dashboard** (zegar + powitanie) i tablet **Tablet 1** z kluczem.
 
-**Przenosiny / kopia zapasowa:** zakładka **Tablety → Kopia zapasowa → Pobierz kopię** zapisuje wszystko w jednym pliku (dashboardy, tablety z kluczami, domy 3D, telewizory, wyzwalacze, wgrane pliki); **Przywróć z pliku** wczytuje ją w innej instalacji – linki tabletów działają dalej.
+**Przenosiny / kopia zapasowa:** **Kopia zapasowa → Pobierz kopię** zapisuje wszystko w jednym pliku (dashboardy, tablety z kluczami, domy 3D, telewizory, wyzwalacze, wgrane pliki); **Przywróć z pliku** wczytuje ją w innej instalacji – linki tabletów działają dalej.
 
 ## Pierwsze kroki
 
-1. Otwórz *Wall Dashboard* z paska bocznego → zakładka **Dashboardy** → **Edytuj** przy „Mój dashboard”.
-2. Tryb **Wizualnie**:
-   - kliknij widget, aby otworzyć jego właściwości po prawej (encja z podpowiedziami z HA, ikona, treść, wygląd, akcje, panel boczny);
-   - przeciągnij widget, aby go przesunąć, a róg, aby zmienić rozmiar; strzałki przesuwają o jedną kratkę, Shift+strzałki zmieniają rozmiar, Delete usuwa, Ctrl+D duplikuje;
-   - kliknij puste miejsce, aby edytować cały dashboard: widoki/zakładki, siatkę, motyw i tło;
-   - **Dodaj → widget…** wstawia nowy widget na dole widoku.
-3. **Dodaj → widget…** – galeria podpowiada widgety z encjami z Twojego HA; pole encji podpowiada encje i ostrzega, gdy encja nie istnieje.
-4. **Zapisz** (lub Ctrl+S). Tablety z tym dashboardem przeładują go same. **Cofnij / Ponów**: Ctrl+Z / Ctrl+Y. Tryb **JSON** daje dostęp do całej konfiguracji, **Podgląd** pokazuje działający dashboard.
-4. Zakładka **Tablety** → **Kopiuj link** → wklej jako adres startowy w Fully Kiosk Browser na tablecie.
+Panel zarządzania ma menu z boku: **Stan**, *Wygląd* (Dashboardy, Motywy, Domy 3D), *Urządzenia* (Tablety, Telewizory), *Dzwonek i automatyka* (Furtka i SIP, Wyzwalacze i pop-upy, Sceny i automatyzacje) oraz *System* (Ustawienia, Kopia zapasowa, Encje).
+
+**Stan** to strona startowa: ile paneli jest online, czy centrala SIP odpowiada, dzwonki z dziś, tryb ciszy i lista „Wymaga uwagi” (panel offline, stara aplikacja, panel niezarejestrowany w centrali, brak HTTPS, go2rtc nie odpowiada). Przycisk **Otwórz** przy ostrzeżeniu przenosi tam, gdzie się to naprawia.
+
+1. **Dashboardy** pokazują miniatury w kolorach motywu i tablety, na których dashboard jest używany. **Edytuj** otwiera edytor, **Duplikuj** robi kopię, **⋯** zmienia nazwę, eksportuje JSON albo usuwa. Nowy dashboard możesz zacząć od siatki dla tabletu, panelu 1:1 albo telefonu; **Importuj** wczytuje JSON z eksportu.
+2. Edytor:
+   - **po lewej** struktura: widoki (zakładki), panele boczne i lista widgetów bieżącego widoku – kliknięcie zaznacza widget, także mały albo przykryty; strzałki zmieniają kolejność widoków; na dole szybkie dodawanie widgetów i **Więcej…** (pełna galeria z podpowiedziami encji z HA);
+   - **w środku** podgląd: przeciągnij widget, aby go przesunąć, a róg, aby zmienić rozmiar; strzałki przesuwają o kratkę, Shift+strzałki zmieniają rozmiar, Delete usuwa, Ctrl+D duplikuje; pod podglądem pasek **Używany na** – kliknięcie tabletu od razu przypisuje albo odłącza dashboard;
+   - **po prawej** właściwości w zakładkach **Widget / Widok / Dashboard** oraz ostrzeżenia (encja, której nie ma w HA, widgety nachodzące na siebie, panel boczny, którego nic nie otwiera – kliknięcie przenosi do widgetu);
+   - u góry: rozmiar ekranu, **podgląd motywu okolicznościowego** (Święta, Wielkanoc… – tylko w edytorze) i **Na tablecie** – wybrany tablet pokazuje bieżącą, także niezapisaną wersję przez 3 minuty (baner „Podgląd z edytora”, dotknięcie wraca wcześniej).
+3. **Zapisz** (lub Ctrl+S). Tablety z tym dashboardem przeładują go same. **Cofnij / Ponów**: Ctrl+Z / Ctrl+Y. Tryb **JSON** daje dostęp do całej konfiguracji, **Podgląd** pokazuje działający dashboard.
+4. **Tablety**: lista ze stanem (online / od kiedy offline, aplikacja i jej wersja, numer SIP i rejestracja). Wybrany tablet ma szybkie akcje (Przeładuj, Wygaś, Test pop-upu, Kopiuj link, Otwórz) i zakładki **Ogólne · Dashboardy · Ekran · Rozmowy · Cisza**. **Kopiuj link** → wklej jako adres startowy w Fully Kiosk Browser albo sparuj aplikację na Androida kodem (karta *Parowanie* pod listą).
 
 ### Adres kiosku
-Link budowany jest z adresu, pod którym otwierasz HA, i portu 8100. Jeśli wchodzisz przez domenę lub reverse proxy (np. `ha.example.com`), w zakładce **Tablety** ustaw *Adres kiosku widziany z tabletów*, np. `http://192.168.1.10:8100`. Port można zmienić w konfiguracji add-onu (sekcja *Sieć*).
+Link budowany jest z adresu, pod którym otwierasz HA, i portu 8100. Jeśli wchodzisz przez domenę lub reverse proxy (np. `ha.example.com`), w **Ustawieniach** ustaw *Adres kiosku widziany z tabletów*, np. `http://192.168.1.10:8100`. Port można zmienić w konfiguracji add-onu (sekcja *Sieć*).
 
 ### Fully Kiosk Browser
 - *Start URL*: link z zakładki Tablety.
@@ -271,8 +274,8 @@ Zakładka **Sceny i automatyzacje** zapisuje bezpośrednio w HA (`scenes.yaml`, 
 ## Aplikacja na Androida i polecenia dla paneli
 
 Aplikacja **Wall Dashboard** (osobny projekt Android) może zastąpić Fully Kiosk na słabym panelu. Parowanie: uruchom aplikację,
-wpisz adres add-onu (np. `192.168.1.10:8100`), panel pokaże 6-cyfrowy kod – wpisz go w **Tablety → parowanie**.
-Ustawienia ekranu (wygaszanie, jasność, PIN) są w **Tablety → Ekran i aplikacja**.
+wpisz adres add-onu (np. `192.168.1.10:8100`), panel pokaże 6-cyfrowy kod – wybierz go w **Tablety → Parowanie aplikacji**.
+Ustawienia ekranu (wygaszanie, jasność, PIN) są w **Tablety → wybrany tablet → Ekran**.
 
 Polecenia z Home Assistant (aplikacja i Fully):
 
@@ -288,7 +291,7 @@ data:
 
 ## Dzwonek z furtki przez centralę SIP (VitalPBX / Asterisk)
 
-Tablety → **Dzwonek z furtki** → „Sposób obsługi połączeń”:
+**Furtka i SIP** → „Sposób obsługi połączeń”:
 - **Po staremu** – wyzwalacz z HA otwiera pop-up, obraz i rozmowa przez go2rtc, poczekalnia add-onu (IVR).
 - **Przez centralę SIP** – furtka dzwoni do centrali, centrala odbiera, gra powitanie i muzykę i jednocześnie dzwoni do paneli i telefonów (numery wewnętrzne). Add-on przekazuje sygnalizację SIP (panel → add-on → centrala), głos idzie bezpośrednio panel ⇄ centrala (WebRTC). Obraz w pop-upie nadal z go2rtc.
 
@@ -302,7 +305,7 @@ Przełączenie w każdej chwili w obie strony – ustawienia SIP zostają zapisa
 5. **Przechwytywanie połączeń**: panele i telefony w tej samej grupie przechwytywania (pickup group), kod z „Feature Codes” (często `*8`).
 
 ### Wall Dashboard
-1. Tablety → Dzwonek z furtki → **Przez centralę SIP**: adres WebSocket centrali (widziany z add-onu), kod przechwycenia, **Furtki**: numer furtki (100) → wyzwalacz, którego pop-up ma się pokazać (kamera go2rtc, „Otwórz furtkę”, historia dzwonków).
+1. **Furtka i SIP** → **Przez centralę SIP**: adres WebSocket centrali (widziany z add-onu), kod przechwycenia, **Furtki**: numer furtki (100) → wyzwalacz, którego pop-up ma się pokazać (kamera go2rtc, „Otwórz furtkę”, historia dzwonków).
 2. W karcie każdego tabletu: **numer wewnętrzny i hasło**. Telefony (zaznaczone jako „Telefon / iPad”): dodatkowo **powiadomienie** `notify.mobile_app_…`.
 3. **Adres kiosku** ustaw na adres https (opcja „ssl” add-onu) – mikrofon w przeglądarce wymaga HTTPS, a powiadomienie otwiera ten adres.
 

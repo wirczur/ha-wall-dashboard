@@ -54,7 +54,7 @@ export const WidgetInspector: FC<{
         {['value', 'temperature', 'button'].includes(w.type) && <IconF value={w.icon} onChange={(v) => set({ icon: v })} />}
       </Section>
 
-      <Section title="Położenie i rozmiar">
+      <Section title="Położenie i rozmiar" open={false}>
         <div className="ins-grid4">
           <NumF label="Kolumna" value={w.x} min={0} max={view.columns - 1} onChange={(v) => set({ x: Math.max(0, Math.min(view.columns - w.w, v ?? 0)) })} />
           <NumF label="Wiersz" value={w.y} min={0} onChange={(v) => set({ y: Math.max(0, v ?? 0) })} />
@@ -597,7 +597,9 @@ const CopyViewTo: FC<{ doc: DashboardDoc; view: ViewDef }> = ({ doc, view }) => 
 
 export const DashboardInspector: FC<{
   doc: DashboardDoc; viewId: string; onChange(d: DashboardDoc): void; onSelectView(id: string): void;
-}> = ({ doc, viewId, onChange, onSelectView }) => {
+  /** 'view' = settings of the selected view, 'dashboard' = name, view switching and theme; default both */
+  part?: 'view' | 'dashboard';
+}> = ({ doc, viewId, onChange, onSelectView, part }) => {
   const view = doc.views.find((v) => v.id === viewId) ?? doc.views[0];
   const ownThemes = useThemes();
   const setView = (p: Partial<ViewDef>) => onChange({ ...doc, views: doc.views.map((v) => (v.id === view.id ? { ...v, ...p } : v)) });
@@ -617,11 +619,20 @@ export const DashboardInspector: FC<{
     const v: ViewDef = { id: 'widok' + n, title: 'Widok ' + n, columns: view.columns, rowHeight: view.rowHeight, gap: view.gap, widgets: [] };
     onChange({ ...doc, views: [...doc.views, v] }); onSelectView(v.id);
   };
+  const showDash = part !== 'view', showView = part !== 'dashboard';
+  const vi = doc.views.findIndex((v) => v.id === view.id);
   return (
     <div className="ins">
-      <div className="ins-top"><h3>Dashboard</h3></div>
-      <p className="muted">Kliknij widget na podglądzie, aby go edytować.</p>
-      <Section title="Ogólne">
+      {!part && <><div className="ins-top"><h3>Dashboard</h3></div>
+      <p className="muted">Kliknij widget na podglądzie, aby go edytować.</p></>}
+      {part === 'view' && <div className="ins-top"><h3>{view.title}</h3>
+        <div className="row-btns">
+          <button className="mini" onClick={() => moveView(vi, -1)} disabled={vi <= 0} aria-label="Przesuń widok wcześniej" title="Wcześniej">↑</button>
+          <button className="mini" onClick={() => moveView(vi, 1)} disabled={vi >= doc.views.length - 1} aria-label="Przesuń widok dalej" title="Dalej">↓</button>
+          <button className="btn" onClick={() => duplicateView(view)}>Duplikuj</button>
+          {doc.views.length > 1 && <button className="btn danger" onClick={() => { if (!confirm(`Usunąć widok „${view.title}” z ${view.widgets.length} widgetami?`)) return; const n = doc.views.filter((x) => x.id !== view.id); onChange({ ...doc, views: n }); onSelectView(n[0].id); }}>Usuń</button>}
+        </div></div>}
+      {showDash && <Section title="Ogólne">
         <TextF label="Nazwa" value={doc.title} onChange={(v) => onChange({ ...doc, title: v ?? '' })} />
         <CheckF label="Pokazuj zakładki widoków" value={doc.showTabs !== false} onChange={(v) => onChange({ ...doc, showTabs: v })} />
         <CheckF label="Przesunięcie palcem w bok zmienia widok" value={doc.swipeViews !== false} onChange={(v) => onChange(clean({ ...doc, swipeViews: v ? undefined : false }) as DashboardDoc)} />
@@ -634,9 +645,9 @@ export const DashboardInspector: FC<{
           options={[['left', 'Do lewej'], ['center', 'Na środku'], ['right', 'Do prawej']]} />}
         {doc.showTabs !== false && ['pills', 'bottom', 'tiles', 'tilesTop'].includes(doc.tabStyle ?? 'top') && <CheckF label="Pływające nad widgetami" value={doc.tabFloat}
           onChange={(v) => onChange(clean({ ...doc, tabFloat: v || undefined }) as DashboardDoc)} />}
-      </Section>
+      </Section>}
 
-      <Section title="Widoki (zakładki)">
+      {!part && <Section title="Widoki (zakładki)">
         {doc.views.map((v, i) => (
           <div key={v.id} className={'view-item' + (v.id === view.id ? ' sel' : '')}>
             <button className="view-name" onClick={() => onSelectView(v.id)}>{v.title}{v.panelOnly ? ' · panel' : ''}</button>
@@ -650,20 +661,20 @@ export const DashboardInspector: FC<{
           </div>
         ))}
         <button className="btn" onClick={addView}>+ Nowy widok</button>
-      </Section>
+      </Section>}
 
-      <Section title={`Widok „${view.title}”`}>
+      {showView && <Section title={part ? 'Ustawienia widoku' : `Widok „${view.title}”`}>
         <TextF label="Nazwa zakładki" value={view.title} onChange={(v) => setView({ title: v ?? view.id })} />
         <CheckF label="Tylko do panelu (nie pokazuj jako zakładki)" value={view.panelOnly} onChange={(v) => setView({ panelOnly: v || undefined })} />
         <IconF value={view.icon} onChange={(v) => setView({ icon: v })} />
         <NumF label="Kolumny siatki" value={view.columns} min={1} max={48} onChange={(v) => setView({ columns: Math.max(1, Math.min(48, v ?? 24)) })} />
         <NumF label="Wysokość wiersza (px)" value={view.rowHeight} min={16} max={400} onChange={(v) => setView({ rowHeight: Math.max(16, v ?? 56) })} />
         <NumF label="Odstęp (px)" value={view.gap} min={0} max={64} onChange={(v) => setView({ gap: Math.max(0, v ?? 12) })} />
-        <button className="btn" onClick={() => duplicateView(view)}>⧉ Duplikuj widok</button>
+        {!part && <button className="btn" onClick={() => duplicateView(view)}>⧉ Duplikuj widok</button>}
         <CopyViewTo doc={doc} view={view} />
-      </Section>
+      </Section>}
 
-      <Section title="Motyw">
+      {showDash && <Section title="Motyw">
         <SelectF label="Wygląd" value={doc.theme.custom ? 'own:' + doc.theme.custom : doc.theme.skin ?? 'glass'}
           onChange={(v) => v.startsWith('own:') ? theme({ custom: v.slice(4) }) : theme({ custom: undefined, skin: v === 'glass' ? undefined : v as ThemeDef['skin'], ...(v !== 'glass' && doc.theme.radius === 20 ? { radius: 16 } : {}) })}
           options={[...SKINS as [string, string][], ...ownThemes.map((t) => ['own:' + t.id, 'Mój: ' + t.name] as [string, string])]}
@@ -685,7 +696,7 @@ export const DashboardInspector: FC<{
         <ColorF label="Tekst" value={doc.theme.textColor} onChange={(v) => theme({ textColor: v ?? '#F5F3EF' })} />
         <RangeF label="Krycie kafelków" value={doc.theme.tileOpacity} def={0.58} min={0} max={1} step={0.05} onChange={(v) => theme({ tileOpacity: v ?? 0.58 })} />
         <RangeF label="Zaokrąglenie" value={doc.theme.radius} def={20} min={0} max={48} unit=" px" onChange={(v) => theme({ radius: v ?? 20 })} />
-      </Section>
+      </Section>}
     </div>
   );
 };

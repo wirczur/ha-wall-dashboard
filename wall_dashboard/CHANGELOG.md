@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+- **Nowy panel zarządzania**: menu z boku zamiast zakładek u góry (Wygląd / Urządzenia / Dzwonek i automatyka / System), działa też na telefonie.
+- **Stan** – strona startowa: panele online, centrala SIP, dzwonki z dziś, tryb ciszy, ostatnie dzwonki i lista „Wymaga uwagi” (panel offline, stara aplikacja Android, panel niezarejestrowany w centrali, brak HTTPS, go2rtc nie odpowiada).
+- **Tablety**: lista ze stanem na żywo (online / offline od…, aplikacja i wersja, ekran, rejestracja SIP) i szczegóły w zakładkach Ogólne · Dashboardy · Ekran · Rozmowy · Cisza; szybkie akcje; kolejność dashboardów tabletu.
+- **Dashboardy**: miniatury w kolorach motywu, „używany na”, szukanie (także po encjach), szablony siatki (tablet, panel 1:1, telefon), import / eksport JSON, zmiana nazwy.
+- **Edytor**: struktura po lewej (widoki, panele boczne, lista widgetów, szybkie dodawanie), właściwości w zakładkach Widget / Widok / Dashboard, pasek „Używany na”, ostrzeżenia dashboardu, podgląd motywów okolicznościowych i **Na tablecie** (niezapisana wersja na wybranym tablecie przez 3 minuty).
+- Ustawienia (adres kiosku, go2rtc), Furtka i SIP oraz Kopia zapasowa mają własne strony.
+
 ## 1.2.0
 - **Własne motywy** (nowa zakładka *Motywy*):
   - kolory tła, kafelków, tekstu, akcentu i stanu „włączony”;

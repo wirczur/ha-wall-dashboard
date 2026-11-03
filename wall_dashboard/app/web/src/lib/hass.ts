@@ -1,7 +1,7 @@
 import { deviceCommand } from './device';
 import { useSyncExternalStore } from 'react';
-import type { ClientMsg, HassState, PopupDef, QuietState, ServerMsg, TvAction, TvStatus, WebRtcEvent, WakeOptions } from '../../../shared/types';
-import { keyQuery } from './boot';
+import type { ClientMsg, DashboardDoc, HassState, PopupDef, QuietState, ServerMsg, TvAction, TvStatus, WebRtcEvent, WakeOptions } from '../../../shared/types';
+import { boot, keyQuery } from './boot';
 import { setQuietMode } from './fully';
 
 type Listener = () => void;
@@ -17,6 +17,7 @@ class HassStore {
   private listeners = new Set<Listener>();
   private statusListeners = new Set<Listener>();
   private dashListeners = new Set<(ids: string[]) => void>();
+  private previewListeners = new Set<(doc: DashboardDoc, until: number) => void>();
   private rtcListeners = new Map<number, (e: WebRtcEvent) => void>();
   private tvPending = new Map<number, { resolve: (s?: TvStatus) => void; reject: (e: Error) => void }>();
   private popupListeners = new Set<(p: PopupDef | null, closeId?: string) => void>();
@@ -58,7 +59,7 @@ class HassStore {
   }
 
   private open() {
-    const u = new URL('ws' + keyQuery(), location.href);
+    const u = new URL('ws' + keyQuery(boot.mode === 'kiosk' ? clientInfo() : ''), location.href);
     u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(u.toString());
     this.ws = ws;
@@ -91,6 +92,7 @@ class HassStore {
         break;
       }
       case 'dashboards-changed': this.dashListeners.forEach((l) => l(m.ids)); break;
+      case 'preview': this.previewListeners.forEach((l) => l(m.doc, m.until)); break;
       case 'webrtc': this.rtcListeners.get(m.id)?.(m.event); break;
       case 'tv': {
         const p = this.tvPending.get(m.id); if (!p) break;
@@ -142,6 +144,7 @@ class HassStore {
 
   subscribe = (l: Listener) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
   subscribeStatus = (l: Listener) => { this.statusListeners.add(l); return () => { this.statusListeners.delete(l); }; };
+  onPreview(l: (doc: DashboardDoc, until: number) => void) { this.previewListeners.add(l); return () => { this.previewListeners.delete(l); }; }
   onDashboardsChanged(l: (ids: string[]) => void) { this.dashListeners.add(l); return () => { this.dashListeners.delete(l); }; }
   private emit() { this.listeners.forEach((l) => l()); }
   private emitStatus() { this.statusListeners.forEach((l) => l()); }
@@ -170,3 +173,16 @@ export function useConnection() {
 
 /** quiet mode of this panel (sounds off) */
 export const useQuiet = () => useSyncExternalStore(hass.subscribeQuiet, () => hass.quiet);
+
+/** what runs the kiosk (shown in the admin): Android app version, Fully, or a plain browser; plus the screen size */
+function clientInfo() {
+  let app = 'browser';
+  try {
+    const w = window as unknown as { wallApp?: { version?(): string }; fully?: unknown };
+    if (w.wallApp) app = 'wa:' + (w.wallApp.version?.() ?? '?');
+    else if (w.fully) app = 'fully';
+    else if (/iPhone|iPad/.test(navigator.userAgent)) app = 'ios';
+  } catch { /* */ }
+  const scr = Math.round(screen.width * (devicePixelRatio || 1)) + 'x' + Math.round(screen.height * (devicePixelRatio || 1));
+  return new URLSearchParams({ app, scr }).toString();
+}

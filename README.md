@@ -18,8 +18,12 @@ Dashboardy na tablety ścienne, panele PoE i telefony. Zawiera:
 | ![Panel boczny](docs/screenshots/panel-side.png) | ![Pop-up dzwonka](docs/screenshots/popup-doorbell.png) |
 | **Ogród** (Rain Bird, kosiarka) | **Edytor w Home Assistant** |
 | ![Ogród](docs/screenshots/panel-garden.png) | ![Edytor](docs/screenshots/admin-editor.png) |
-| **Motywy – edytor z podglądem** | **Telefon** (jedna kolumna, PWA) |
-| ![Motywy](docs/screenshots/admin-themes.png) | <img src="docs/screenshots/phone.png" width="260" alt="Telefon"> |
+| **Panel zarządzania – Stan** (panele online, centrala, dzwonki, ostrzeżenia) | **Tablety** (stan na żywo, ustawienia w zakładkach) |
+| ![Stan](docs/screenshots/admin-status.png) | ![Tablety](docs/screenshots/admin-tablets.png) |
+| **Dashboardy** (miniatury, „używany na”, szablony) | **Motywy – edytor z podglądem** |
+| ![Dashboardy](docs/screenshots/admin-dashboards.png) | ![Motywy](docs/screenshots/admin-themes.png) |
+| **Telefon** (jedna kolumna, PWA) | |
+| <img src="docs/screenshots/phone.png" width="260" alt="Telefon"> | |
 
 > Zrzuty pochodzą z przykładowego domu z danymi testowymi.
 
@@ -52,7 +56,7 @@ Skopiuj folder [`wall_dashboard`](wall_dashboard) do udziału **`addons`** w HA,
 
 ## Pierwsze kroki
 1. **Dashboard:** Wall Dashboard → *Dashboardy* → *Edytuj*. Widgety dodajesz z galerii (**+ Dodaj widget**), przeciągasz i zmieniasz ich rozmiar na siatce. Podgląd jest dostępny dla tabletu 16:10, 15″, panelu 1:1 i telefonu.
-2. **Tablet:** zakładka *Tablety* → **Dodaj tablet** → wybierz dashboardy → **Kopiuj link** i otwórz go na tablecie. Zamiast linku możesz sparować aplikację na Androida kodem.
+2. **Tablet:** *Tablety* → **Dodaj tablet** → wybierz dashboardy → **Kopiuj link** i otwórz go na tablecie. Zamiast linku możesz sparować aplikację na Androida kodem.
 3. **Adres kiosku:** port **8100**. Dla mikrofonu (interkom, dzwonek SIP) włącz HTTPS w konfiguracji dodatku (`ssl: true` z certyfikatem z `/ssl`).
 
 Pełna instrukcja jest w zakładce **Dokumentacja** dodatku ([wall_dashboard/DOCS.md](wall_dashboard/DOCS.md)).
@@ -69,6 +73,7 @@ Pełna instrukcja jest w zakładce **Dokumentacja** dodatku ([wall_dashboard/DOC
 - **Panele boczne i pop-upy:**
   - kafelek otwiera listę encji albo cały widok (np. pokój);
   - pop-upy z automatyzacji HA (np. dzwonek): budzą ekran, odtwarzają dźwięk, pokazują kamerę i przycisk „Otwórz furtkę”.
+- **Panel zarządzania w HA:** strona *Stan* z ostrzeżeniami, tablety ze stanem na żywo, miniatury dashboardów, edytor ze strukturą widoków, podglądem motywów okolicznościowych i wysyłką niezapisanej wersji na wybrany tablet.
 - **Wygląd:**
   - wbudowane motywy: Szkło, Mech i mosiądz;
   - motywy okolicznościowe (Święta, Wielkanoc, Halloween, Walentynki);

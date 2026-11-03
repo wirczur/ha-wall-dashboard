@@ -1,97 +1,339 @@
-import { useCallback, useEffect, useState, type FC } from 'react';
-import { SoundSelect, Triggers } from './Triggers';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
+import { Triggers } from './Triggers';
 import { SceneAutomation } from './SceneAutomation';
-import type { DashboardSummary, DeviceCmd, EntityInfo, PairRequest, SaverClock, ScreenDef, Settings, SipSettings, Tablet, TriggerDef } from '../../../shared/types';
+import type { CustomTheme, DashboardDoc, DashboardSummary, EntityInfo, Settings, SipSettings, StatusInfo, TabletLive, TriggerDef, ViewDef } from '../../../shared/types';
 import { api } from '../lib/api';
 import { boot } from '../lib/boot';
 import { hass, useConnection } from '../lib/hass';
+import { useLook } from '../lib/occasion';
 import { Icon } from '../ui/Icon';
+import { lookVars } from '../view/DashboardView';
+import { WIDGETS } from '../widgets/widgets';
 import { DashboardEditor } from './DashboardEditor';
 import { HouseEditor, Houses } from './HouseEditor';
 import { Tvs } from './Tvs';
 import { Themes } from './Themes';
 import { setThemes } from '../lib/themes';
+import { Tablets, when, type Info } from './Tablets';
 
-type Tab = 'dashboards' | 'houses' | 'tvs' | 'tablets' | 'triggers' | 'automations' | 'entities' | 'themes';
-interface Info { version: string; kioskPort: number; haConnected: boolean; settings: Settings }
+type Page = 'status' | 'dashboards' | 'themes' | 'houses' | 'tablets' | 'tvs' | 'door' | 'triggers' | 'automations' | 'settings' | 'backup' | 'entities';
+const NAV: [string, [Page, string, string][]][] = [
+  ['', [['status', 'Stan', 'mdi:view-dashboard-variant-outline']]],
+  ['Wygląd', [['dashboards', 'Dashboardy', 'mdi:view-grid-outline'], ['themes', 'Motywy', 'mdi:palette-outline'], ['houses', 'Domy 3D', 'mdi:home-modern']]],
+  ['Urządzenia', [['tablets', 'Tablety', 'mdi:tablet'], ['tvs', 'Telewizory', 'mdi:television']]],
+  ['Dzwonek i automatyka', [['door', 'Furtka i SIP', 'mdi:doorbell-video'], ['triggers', 'Wyzwalacze i pop-upy', 'mdi:bell-ring-outline'], ['automations', 'Sceny i automatyzacje', 'mdi:robot-outline']]],
+  ['System', [['settings', 'Ustawienia', 'mdi:cog-outline'], ['backup', 'Kopia zapasowa', 'mdi:backup-restore'], ['entities', 'Encje', 'mdi:format-list-bulleted']]]
+];
+const PAGES = new Set(NAV.flatMap(([, l]) => l.map(([p]) => p)));
+
+/** #/tablets/<id> → { page, sub } */
+function readHash(): { page: Page; sub?: string; edit?: string; house?: string } {
+  const h = location.hash;
+  if (h.startsWith('#edit/')) return { page: 'dashboards', edit: decodeURIComponent(h.slice(6)) };
+  if (h.startsWith('#house/')) return { page: 'houses', house: decodeURIComponent(h.slice(7)) };
+  const [p, sub] = h.replace(/^#\/?/, '').split('/');
+  return { page: PAGES.has(p as Page) ? (p as Page) : 'status', sub: sub ? decodeURIComponent(sub) : undefined };
+}
 
 /** Admin UI: opened from the Home Assistant sidebar (ingress). Full access. */
 export const AdminApp: FC = () => {
-  const [tab, setTab] = useState<Tab>('dashboards');
-  const [editing, setEditing] = useState<string | null>(() => location.hash.startsWith('#edit/') ? decodeURIComponent(location.hash.slice(6)) : null);
-  const [editingHouse, setEditingHouse] = useState<string | null>(() => location.hash.startsWith('#house/') ? decodeURIComponent(location.hash.slice(7)) : null);
+  const [route, setRoute] = useState(readHash);
   const [info, setInfo] = useState<Info | null>(null);
+  const [status, setStatus] = useState<StatusInfo | null>(null);
+  const [counts, setCounts] = useState<{ dashboards?: number; themes?: number }>({});
+  const [navOpen, setNavOpen] = useState(false);
   const conn = useConnection();
 
-  useEffect(() => { hass.start(); api.get<Info>('info').then(setInfo).catch(() => {}); api.get<import('../../../shared/types').CustomTheme[]>('themes').then(setThemes).catch(() => {}); }, []);
   useEffect(() => {
-    history.replaceState(null, '', editing ? '#edit/' + encodeURIComponent(editing) : editingHouse ? '#house/' + encodeURIComponent(editingHouse) : '#');
-  }, [editing, editingHouse]);
+    hass.start(); api.get<Info>('info').then(setInfo).catch(() => {});
+    api.get<CustomTheme[]>('themes').then((l) => { setThemes(l); setCounts((c) => ({ ...c, themes: l.length })); }).catch(() => {});
+    api.get<DashboardSummary[]>('dashboards').then((l) => setCounts((c) => ({ ...c, dashboards: l.length }))).catch(() => {});
+  }, []);
+  const loadStatus = useCallback(() => api.get<StatusInfo>('status').then(setStatus).catch(() => {}), []);
+  useEffect(() => { loadStatus(); const t = setInterval(loadStatus, 15000); return () => clearInterval(t); }, [loadStatus]);
+  useEffect(() => { const f = () => setRoute(readHash()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
+  const go = (page: Page, sub?: string) => { location.hash = '#/' + page + (sub ? '/' + encodeURIComponent(sub) : ''); setNavOpen(false); };
 
-  if (editing) return <DashboardEditor id={editing} onBack={() => setEditing(null)} />;
-  if (editingHouse) return <HouseEditor id={editingHouse} onBack={() => { setEditingHouse(null); setTab('houses'); }} />;
+  if (route.edit) return <DashboardEditor id={route.edit} onBack={() => go('dashboards')} />;
+  if (route.house) return <HouseEditor id={route.house} onBack={() => go('houses')} />;
 
+  const warn = status?.warnings.length ?? 0;
+  const badge: Partial<Record<Page, { n: number | string; cls?: string }>> = {
+    status: warn ? { n: warn, cls: status!.warnings.some((w) => w.level === 'err') ? 'err' : 'warn' } : undefined,
+    dashboards: counts.dashboards != null ? { n: counts.dashboards } : undefined,
+    themes: counts.themes ? { n: counts.themes } : undefined,
+    tablets: status ? { n: `${status.tablets.filter((t) => t.online).length}/${status.tablets.length}` } : undefined
+  };
+  const page = route.page;
   return (
-    <div className="admin">
-      <header className="a-head">
-        <div>
-          <h1>Wall Dashboard</h1>
-          <p className="muted">Wersja {boot.version} · {conn.ha ? 'połączono z Home Assistant' : 'brak połączenia z Home Assistant'}</p>
-        </div>
-        <nav className="a-tabs" role="tablist">
-          {([['dashboards', 'Dashboardy'], ['houses', 'Domy 3D'], ['tvs', 'Telewizory'], ['themes', 'Motywy'], ['tablets', 'Tablety'], ['triggers', 'Wyzwalacze'], ['automations', 'Sceny i automatyzacje'], ['entities', 'Encje']] as [Tab, string][]).map(([k, l]) => (
-            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
-          ))}
-        </nav>
-      </header>
-      {tab === 'dashboards' && <Dashboards onEdit={setEditing} />}
-      {tab === 'houses' && <Houses onEdit={setEditingHouse} />}
-      {tab === 'tvs' && <Tvs />}
-      {tab === 'themes' && <Themes />}
-      {tab === 'tablets' && info && <Tablets info={info} onSettings={(s) => setInfo({ ...info, settings: s })} />}
-      {tab === 'triggers' && <Triggers />}
-      {tab === 'automations' && <SceneAutomation />}
-      {tab === 'entities' && <Entities />}
+    <div className={'adm' + (navOpen ? ' nav-open' : '')}>
+      <nav className="adm-nav">
+        <div className="adm-logo"><i />Wall Dashboard</div>
+        {NAV.map(([g, items]) => (
+          <div key={g || '-'} className="adm-grp">
+            {g && <div className="adm-gl">{g}</div>}
+            {items.map(([p, l, ic]) => (
+              <button key={p} className={'adm-it' + (page === p ? ' on' : '')} onClick={() => go(p)} aria-current={page === p ? 'page' : undefined}>
+                <Icon name={ic} size={19} /><span>{l}</span>
+                {badge[p] && <b className={badge[p]!.cls}>{badge[p]!.n}</b>}
+              </button>
+            ))}
+          </div>
+        ))}
+        <div className="adm-ver">wersja {boot.version}<br /><i className={'dot ' + (conn.ha ? 'ok' : 'err')} />{conn.ha ? 'Home Assistant połączony' : 'brak połączenia z HA'}</div>
+      </nav>
+      <div className="adm-scrim" onClick={() => setNavOpen(false)} />
+      <main className="adm-main">
+        <button className="btn adm-burger" onClick={() => setNavOpen(true)} aria-label="Menu"><Icon name="mdi:menu" size={20} />Menu</button>
+        {page === 'status' && <Status s={status} reload={loadStatus} go={go} />}
+        {page === 'dashboards' && <Dashboards onEdit={(id) => { location.hash = '#edit/' + encodeURIComponent(id); }} onCount={(n) => setCounts((c) => ({ ...c, dashboards: n }))} />}
+        {page === 'houses' && <Houses onEdit={(id) => { location.hash = '#house/' + encodeURIComponent(id); }} />}
+        {page === 'tvs' && <Tvs />}
+        {page === 'themes' && <Themes />}
+        {page === 'tablets' && info && <Tablets info={info} sel={route.sub} onSel={(id) => go('tablets', id)} />}
+        {page === 'door' && info && <section className="a-sec"><div className="a-bar"><h2>Furtka i SIP</h2></div><SipCard info={info} onSettings={(s) => setInfo({ ...info, settings: s })} /></section>}
+        {page === 'triggers' && <Triggers />}
+        {page === 'automations' && <SceneAutomation />}
+        {page === 'settings' && info && <SettingsPage info={info} onSettings={(s) => setInfo({ ...info, settings: s })} />}
+        {page === 'backup' && <section className="a-sec"><div className="a-bar"><h2>Kopia zapasowa</h2></div><BackupCard /></section>}
+        {page === 'entities' && <Entities />}
+      </main>
     </div>
   );
 };
 
+// ---------------------------------------------------------------- status
+const CALL_ST: Record<string, [string, string]> = { answered: ['Odebrany', 'ok'], opened: ['Otwarto', 'ok'], missed: ['Nieodebrany', 'err'], rejected: ['Odrzucony', 'warn'], ringing: ['Dzwoni', 'warn'] };
+const Status: FC<{ s: StatusInfo | null; reload(): void; go(p: Page, sub?: string): void }> = ({ s, reload, go }) => {
+  const [msg, setMsg] = useState('');
+  if (!s) return <section className="a-sec"><div className="a-bar"><h2>Stan</h2></div><p className="muted">Ładowanie…</p></section>;
+  const panels = s.tablets.filter((t) => !t.phone);
+  const off = panels.filter((t) => !t.online);
+  const reloadAll = async () => {
+    let n = 0;
+    for (const t of s.tablets.filter((x) => x.online)) { const r = await api.post<{ delivered: number }>('tablets/' + t.id + '/command', { command: 'reload' }).catch(() => ({ delivered: 0 })); n += r.delivered ? 1 : 0; }
+    setMsg(`Przeładowano: ${n}`); setTimeout(reload, 4000);
+  };
+  const dur = (a: number, b?: number) => { if (!b) return ''; const x = Math.round((b - a) / 1000); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); };
+  return (
+    <section className="a-sec">
+      <div className="a-bar">
+        <h2>Stan</h2>
+        <div className="row-btns">{msg && <span className="muted small">{msg}</span>}
+          <button className="btn" onClick={reloadAll}><Icon name="mdi:refresh" size={16} />Przeładuj wszystkie tablety</button>
+          <button className="btn primary" onClick={async () => { const t = await api.post<{ id: string }>('tablets', { name: 'Nowy tablet' }); go('tablets', t.id); }}><Icon name="plus" size={18} />Dodaj tablet</button></div>
+      </div>
+      <div className="st-kpis">
+        <button className="card st-kpi" onClick={() => go('tablets')}>
+          <span className="muted small">Panele online</span>
+          <b className="st-n">{panels.length - off.length}<small> / {panels.length}</small></b>
+          <small>{off.length ? <><i className="dot err" />{off[0].name}{off.length > 1 ? ` i jeszcze ${off.length - 1}` : ''} – offline</> : <><i className="dot ok" />wszystkie działają</>}</small>
+        </button>
+        <button className="card st-kpi" onClick={() => go('door')}>
+          <span className="muted small">Dzwonek z furtki</span>
+          <b className="st-n sm">{!s.sip ? 'Po staremu' : s.sip.ok ? 'Centrala OK' : 'Centrala nie odpowiada'}</b>
+          <small>{!s.sip ? 'wyzwalacz z HA + go2rtc' : <><i className={'dot ' + (s.sip.ok ? 'ok' : 'err')} />{s.sip.doors.length ? 'furtka ' + s.sip.doors.join(', ') : 'brak furtki'}{s.sip.registered.length ? ' · panele ' + s.sip.registered.join(', ') : ''}</>}</small>
+        </button>
+        <button className="card st-kpi" onClick={() => go('triggers')}>
+          <span className="muted small">Dzwonki dziś</span>
+          <b className="st-n">{s.calls.today}</b>
+          <small className="muted">{s.calls.missedToday ? `${s.calls.missedToday} nieodebrane` : 'bez nieodebranych'}{s.calls.last[0] ? ' · ostatni ' + when(s.calls.last[0].at) : ''}</small>
+        </button>
+        <button className="card st-kpi" onClick={() => go('tablets')}>
+          <span className="muted small">Tryb ciszy</span>
+          <b className="st-n sm">{s.quiet.length ? `${s.quiet.length} ${s.quiet.length === 1 ? 'panel' : 'panele'} w ciszy` : 'Wyłączony'}</b>
+          <small className="muted">{s.quiet.map((q) => q.name + (q.until ? ' do ' + when(q.until) : '')).join(', ') || 'dźwięki włączone wszędzie'}</small>
+        </button>
+      </div>
+      <div className="st-cols">
+        <div className="card">
+          <h3>Wymaga uwagi</h3>
+          {!s.warnings.length && <p className="muted"><i className="dot ok" />Wszystko działa.</p>}
+          {s.warnings.map((w, i) => (
+            <div key={i} className={'st-warn' + (w.level === 'err' ? ' st-e' : '')}>
+              <i className={'dot ' + (w.level === 'err' ? 'err' : 'warn')} />
+              <div><b>{w.title}</b><small>{w.text}</small></div>
+              <button className="btn" onClick={() => go(w.page as Page, w.tablet)}>Otwórz</button>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <h3>Ostatnie dzwonki</h3>
+          {!s.calls.last.length && <p className="muted">Jeszcze nikt nie dzwonił.</p>}
+          {s.calls.last.map((c) => {
+            const [l, cls] = CALL_ST[c.status] ?? [c.status, ''];
+            return (
+              <div key={c.id} className="st-call">
+                <span className={'pill ' + cls}>{l}</span>
+                <span className="grow">{c.name}{c.byName ? ' → ' + c.byName : ''}</span>
+                <small className="muted">{when(c.at)}{c.status === 'answered' && c.ended ? ' · ' + dur(c.at, c.ended) : ''}</small>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="muted small">Wall Dashboard {s.version} · kiosk {s.https ? 'HTTPS' : 'HTTP'}{s.go2rtc ? ` · go2rtc ${s.go2rtc.ok ? 'OK (' + s.go2rtc.streams + ' strumieni)' : 'nie odpowiada'}` : ''} · aplikacja Android: najnowsza {s.latestApp}</p>
+    </section>
+  );
+};
+
+// ---------------------------------------------------------------- settings (kiosk address, go2rtc)
+const SettingsPage: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSettings }) => {
+  const [base, setBase] = useState(info.settings.kioskBase);
+  const [g2, setG2] = useState(info.settings.go2rtcUrl ?? '');
+  const [g2msg, setG2msg] = useState('');
+  const [msg, setMsg] = useState('');
+  const effectiveBase = info.settings.kioskBase || `${location.protocol === 'https:' ? 'http:' : location.protocol}//${location.hostname}:${info.kioskPort}`;
+  return (
+    <section className="a-sec">
+      <div className="a-bar"><h2>Ustawienia</h2></div>
+      <div className="card">
+        <label className="field">
+          <span>Adres kiosku widziany z tabletów</span>
+          <div className="row-btns">
+            <input value={base} placeholder={effectiveBase} onChange={(e) => setBase(e.target.value)} />
+            <button className="btn" onClick={async () => { onSettings(await api.put<Settings>('settings', { kioskBase: base })); setMsg('Zapisano.'); }}>Zapisz</button>
+          </div>
+          <small className="muted">{msg || `Puste = ${effectiveBase}. Ustaw np. https://192.168.1.10:${info.kioskPort}, jeśli otwierasz HA przez domenę lub reverse proxy. Z tego adresu powstają linki tabletów.`}</small>
+        </label>
+        <label className="field">
+          <span>Adres API go2rtc (kamery „Bezpośrednio go2rtc”, rozmowa z domofonem po staremu)</span>
+          <div className="row-btns">
+            <input value={g2} placeholder="http://127.0.0.1:1984" onChange={(e) => setG2(e.target.value)} />
+            <button className="btn" onClick={async () => {
+              try {
+                onSettings(await api.put<Settings>('settings', { kioskBase: base, go2rtcUrl: g2 }));
+                const s = await api.get<string[]>('go2rtc/streams');
+                setG2msg(s.length ? 'Połączono. Strumienie: ' + s.join(', ') : 'Zapisano, ale go2rtc nie odpowiada pod tym adresem.');
+              } catch (e: any) { setG2msg(e.message); }
+            }}>Zapisz i sprawdź</button>
+          </div>
+          <small className="muted">{g2msg || 'Adres widziany z add-onu (nie z tabletu), port API 1984 – nie rtsp://…:8554. Puste = http://127.0.0.1:1984 (dodatek go2rtc na tym samym HA).'}</small>
+        </label>
+      </div>
+      <div className="card">
+        <h3>HTTPS kiosku</h3>
+        <p className="muted small">Mikrofon (interkom, rozmowa z furtką) działa w przeglądarce tylko po HTTPS. Włącz w konfiguracji add-onu <code>ssl: true</code> i wskaż certyfikat z <code>/ssl</code> (<code>certfile</code>, <code>keyfile</code>), potem uruchom add-on ponownie.</p>
+      </div>
+    </section>
+  );
+};
+
 // ---------------------------------------------------------------- dashboards
-const Dashboards: FC<{ onEdit(id: string): void }> = ({ onEdit }) => {
+const TEMPLATES: [string, string, Partial<ViewDef>, number][] = [
+  ['tablet', 'Tablet / panel 15″', { columns: 24, rowHeight: 56, gap: 12 }, 8],
+  ['square', 'Panel 1:1', { columns: 12, rowHeight: 48, gap: 10 }, 6],
+  ['phone', 'Telefon', { columns: 6, rowHeight: 64, gap: 10 }, 6]
+];
+const Dashboards: FC<{ onEdit(id: string): void; onCount(n: number): void }> = ({ onEdit, onCount }) => {
   const [list, setList] = useState<DashboardSummary[]>([]);
+  const [docs, setDocs] = useState<Record<string, DashboardDoc>>({});
+  const [tablets, setTablets] = useState<TabletLive[]>([]);
+  const [q, setQ] = useState('');
+  const [menu, setMenu] = useState<string | null>(null);
   const [err, setErr] = useState('');
-  const [confirm, setConfirm] = useState<string | null>(null);
-  const load = useCallback(() => api.get<DashboardSummary[]>('dashboards').then(setList).catch((e) => setErr(e.message)), []);
+  const load = useCallback(async () => {
+    try {
+      const l = await api.get<DashboardSummary[]>('dashboards'); setList(l); onCount(l.length);
+      api.get<TabletLive[]>('tablets').then(setTablets).catch(() => {});
+      const all = await Promise.all(l.map((d) => api.get<DashboardDoc>('dashboards/' + d.id).catch(() => null)));
+      setDocs(Object.fromEntries(all.filter(Boolean).map((d) => [d!.id, d!])));
+    } catch (e: any) { setErr(e.message); }
+  }, [onCount]);
   useEffect(() => { load(); }, [load]);
 
-  const create = async (copyFrom?: string, title?: string) => {
-    const d = await api.post<{ id: string }>('dashboards', { title: title || 'Nowy dashboard', copyFrom });
+  const create = async (copyFrom?: string, title?: string) => (await api.post<DashboardDoc>('dashboards', { title: title || 'Nowy dashboard', copyFrom }));
+  const fromTemplate = async (k: string) => {
+    const [, label, grid, clockW] = TEMPLATES.find((t) => t[0] === k)!;
+    const d = await create(undefined, 'Nowy – ' + label);
+    const v = d.views[0];
+    await api.put('dashboards/' + d.id, { ...d, views: [{ ...v, ...grid, widgets: v.widgets.map((w) => ({ ...w, w: Math.min(clockW, grid.columns!) })) }] });
     onEdit(d.id);
   };
+  const importJson = async () => {
+    const txt = window.prompt('Wklej dashboard (JSON z „Eksportuj”):'); if (!txt) return;
+    try {
+      const d = JSON.parse(txt) as DashboardDoc; if (!Array.isArray(d?.views)) throw new Error('to nie jest dashboard');
+      const n = await create(undefined, d.title || 'Zaimportowany');
+      await api.put('dashboards/' + n.id, { ...d, id: n.id, title: n.title }); load();
+    } catch (e: any) { setErr('Nie udało się zaimportować: ' + e.message); }
+  };
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = list.filter((d) => !terms.length || terms.every((t) => (d.title + ' ' + JSON.stringify(docs[d.id]?.views ?? '')).toLowerCase().includes(t)));
   return (
     <section className="a-sec">
       <div className="a-bar">
         <h2>Dashboardy</h2>
-        <button className="btn primary" onClick={() => create()}><Icon name="plus" size={18} />Nowy dashboard</button>
+        <input className="search db-q" placeholder="Szukaj dashboardu lub encji…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="row-btns">
+          <button className="btn" onClick={importJson}>Importuj</button>
+          <button className="btn primary" onClick={async () => onEdit((await create()).id)}><Icon name="plus" size={18} />Nowy dashboard</button>
+        </div>
       </div>
       {err && <p className="err">{err}</p>}
-      <div className="cards">
-        {list.map((d) => (
-          <article key={d.id} className="card">
-            <h3>{d.title}</h3>
-            <p className="muted">{d.views} {d.views === 1 ? 'widok' : 'widoki'} · {d.widgets} widgetów · id: <code>{d.id}</code></p>
-            <div className="row-btns">
-              <button className="btn primary" onClick={() => onEdit(d.id)}><Icon name="edit" size={18} />Edytuj</button>
-              <button className="btn" onClick={() => create(d.id, d.title + ' (kopia)')}>Duplikuj</button>
-              {confirm === d.id
-                ? <><button className="btn danger" onClick={async () => { await api.del('dashboards/' + d.id); setConfirm(null); load(); }}>Na pewno usuń</button>
-                    <button className="btn" onClick={() => setConfirm(null)}>Anuluj</button></>
-                : <button className="btn" onClick={() => setConfirm(d.id)}>Usuń</button>}
-            </div>
-          </article>
-        ))}
+      <div className="db-grid">
+        {shown.map((d) => {
+          const on = tablets.filter((t) => t.dashboards.includes(d.id));
+          const doc = docs[d.id];
+          return (
+            <article key={d.id} className="card db-card">
+              <button className="db-thumb-btn" onClick={() => onEdit(d.id)} aria-label={'Edytuj ' + d.title}>{doc ? <Thumb doc={doc} /> : <div className="db-thumb" />}</button>
+              <div className="db-meta">
+                <b>{d.title}</b>
+                {doc && <ThemeName doc={doc} />}
+              </div>
+              <small className="muted">{d.views} {d.views === 1 ? 'widok' : d.views < 5 ? 'widoki' : 'widoków'} · {d.widgets} widgetów · {on.length ? 'na: ' + on.map((t) => t.name).join(', ') : <span className="warn-t">nieprzypisany</span>}</small>
+              <div className="db-acts">
+                <button className="btn primary" onClick={() => onEdit(d.id)}><Icon name="edit" size={16} />Edytuj</button>
+                <button className="btn" onClick={async () => { await create(d.id, d.title + ' (kopia)'); load(); }}>Duplikuj</button>
+                <div className="db-more">
+                  <button className="btn" onClick={() => setMenu(menu === d.id ? null : d.id)} aria-label="Więcej" aria-expanded={menu === d.id}>⋯</button>
+                  {menu === d.id && <div className="db-menu" onMouseLeave={() => setMenu(null)}>
+                    <button onClick={async () => { const t = window.prompt('Nowa nazwa:', d.title); setMenu(null); if (t && doc) { await api.put('dashboards/' + d.id, { ...doc, title: t }); load(); } }}>Zmień nazwę</button>
+                    <button onClick={async () => { setMenu(null); const txt = JSON.stringify(doc, null, 2); try { await navigator.clipboard.writeText(txt); setErr(''); alert('Skopiowano dashboard (JSON) do schowka.'); } catch { window.prompt('Skopiuj:', txt); } }}>Eksportuj (JSON)</button>
+                    <button className="danger" onClick={async () => { setMenu(null); if (confirm(`Usunąć dashboard „${d.title}”?${on.length ? ' Używają go: ' + on.map((t) => t.name).join(', ') + '.' : ''}`)) { await api.del('dashboards/' + d.id); load(); } }}>Usuń</button>
+                  </div>}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+        <div className="db-new">
+          <Icon name="plus" size={26} />
+          <b>Nowy dashboard</b>
+          <small className="muted">zacznij od siatki dla:</small>
+          <div className="row-btns">{TEMPLATES.map(([k, l]) => <button key={k} className="btn" onClick={() => fromTemplate(k)}>{l}</button>)}</div>
+        </div>
       </div>
     </section>
+  );
+};
+
+const ThemeName: FC<{ doc: DashboardDoc }> = ({ doc }) => {
+  const look = useLook({ ...doc.theme, occasions: false });
+  const name = look.custom ? look.custom.name : doc.theme.skin === 'mech' ? 'Mech i mosiądz' : doc.theme.skin && doc.theme.skin !== 'glass' ? doc.theme.skin : 'Szkło';
+  return <span className="pill">{name}</span>;
+};
+
+/** schematic of the first view in the dashboard's own colours; tiles of entities that are on use the "on" colour */
+export const Thumb: FC<{ doc: DashboardDoc; view?: ViewDef }> = ({ doc, view }) => {
+  const look = useLook({ ...doc.theme, occasions: false });
+  const v = view ?? doc.views.find((x) => !x.panelOnly) ?? doc.views[0];
+  const rows = Math.max(4, Math.min(24, v ? v.widgets.reduce((m, w) => Math.max(m, w.y + w.h), 0) : 4));
+  const bg = look.skin || look.custom ? 'var(--bg)' : doc.theme.background.type === 'color' ? doc.theme.background.color : 'linear-gradient(135deg, #1b2030, #0b0d12)';
+  const img = doc.theme.background.type === 'image' && doc.theme.background.image ? `url("${doc.theme.background.image}") center / cover` : undefined;
+  return (
+    <div className="db-thumb" data-skin={look.skin} style={{ ...lookVars(doc.theme, look), background: img ?? bg }}>
+      <div className="db-thumb-grid" style={{ gridTemplateColumns: `repeat(${v?.columns ?? 12}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
+        {v?.widgets.filter((w) => w.y < rows).map((w) => {
+          const st = w.entity ? hass.states.get(w.entity)?.state : undefined;
+          const on = st === 'on' || st === 'open' || st === 'playing' || st === 'heat' || st === 'cool';
+          const plain = ['clock', 'date', 'text'].includes(w.type);
+          return <i key={w.id} title={w.title || WIDGETS[w.type]?.label} className={plain ? 'plain' : on ? 'on' : ''}
+            style={{ gridColumn: `${w.x + 1} / span ${w.w}`, gridRow: `${w.y + 1} / span ${Math.min(w.h, rows - w.y)}` }} />;
+        })}
+      </div>
+    </div>
   );
 };
 
@@ -149,208 +391,11 @@ const SipCard: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSe
           <small className="muted">Gdy SIP jest włączony, wyzwalacz tej furtki nie otwiera już pop-upu z HA (zrobi to połączenie SIP), a poczekalnia add-onu nie działa – ustaw ją w centrali (IVR + muzyka + grupa dzwonienia).</small>
         </fieldset>
         <div className="row-btns"><button className="btn primary" onClick={() => save()}>Zapisz</button>{msg && <span className="muted small">{msg}</span>}</div>
-        <p className="muted small">Numer SIP i hasło każdego panelu / telefonu ustawiasz niżej, w jego karcie. Mikrofon wymaga HTTPS kiosku.</p>
+        <p className="muted small">Numer SIP i hasło każdego panelu / telefonu ustawiasz w Tablety → wybrany tablet → Rozmowy. Mikrofon wymaga HTTPS kiosku.</p>
       </>}
     </div>
   );
 };
-
-/** SIP account of one tablet / phone */
-const TabletSip: FC<{ t: Tablet; onSave(p: Partial<Tablet>): void }> = ({ t, onSave }) => {
-  const [ext, setExt] = useState(t.sip?.ext ?? '');
-  const [pw, setPw] = useState(t.sip?.password ?? '');
-  const [notify, setNotify] = useState(t.notify ?? '');
-  // the HA app registers device trackers as device_tracker.<name>; its notify service is notify.mobile_app_<name>
-  const notifiers = [...hass.states.keys()].filter((k) => k.startsWith('device_tracker.')).map((k) => 'notify.mobile_app_' + k.slice(15));
-  return (
-    <fieldset className="field"><legend>Centrala SIP – {t.name}</legend>
-      <div className="ins-grid2">
-        <label className="field"><span>Numer wewnętrzny</span><input value={ext} placeholder="np. 201" onChange={(e) => setExt(e.target.value)} /></label>
-        <label className="field"><span>Hasło (secret)</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></label>
-      </div>
-      {t.phone && <label className="field"><span>Powiadomienie o dzwonku (aplikacja HA na telefonie)</span>
-        <input list={'nf-' + t.id} value={notify} placeholder="notify.mobile_app_iphone" onChange={(e) => setNotify(e.target.value)} />
-        <datalist id={'nf-' + t.id}>{notifiers.map((n) => <option key={n} value={n} />)}</datalist>
-        <small className="muted">Push otwiera link tego telefonu; „Odbierz” przejmuje połączenie kodem przechwycenia.</small></label>}
-      <div className="ins-grid2">
-        <label className="field"><span>Głośność systemu w rozmowie (10–100%)</span>
-          <input type="number" min={10} max={100} step={5} defaultValue={t.callVolume ?? 100} onBlur={(e) => onSave({ callVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
-          <small className="muted">Na czas rozmowy panel ustawia tę głośność, po rozmowie wraca do poprzedniej.</small></label>
-        <label className="field"><span>Wzmocnienie głosu rozmówcy (50–400%)</span>
-          <input type="number" min={50} max={400} step={25} defaultValue={t.callGain ?? 100} onBlur={(e) => onSave({ callGain: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
-          <small className="muted">Startowa wartość; w rozmowie zmienisz ją przyciskami − / + (panel ją zapamięta).</small></label>
-      </div>
-      <div className="row-btns">
-        <button className="btn" onClick={() => onSave({ sip: ext.trim() ? { ext: ext.trim(), password: pw } : undefined, ...(t.phone ? { notify: notify.trim() || undefined } : {}) })}>Zapisz SIP</button>
-      </div>
-    </fieldset>
-  );
-};
-
-// ---------------------------------------------------------------- tablets
-const Tablets: FC<{ info: Info; onSettings(s: Settings): void }> = ({ info, onSettings }) => {
-  const [tablets, setTablets] = useState<Tablet[]>([]);
-  const [dashes, setDashes] = useState<DashboardSummary[]>([]);
-  const [base, setBase] = useState(info.settings.kioskBase);
-  const [g2, setG2] = useState(info.settings.go2rtcUrl ?? '');
-  const [g2msg, setG2msg] = useState('');
-  const [copied, setCopied] = useState('');
-  const load = useCallback(() => {
-    api.get<Tablet[]>('tablets').then(setTablets);
-    api.get<DashboardSummary[]>('dashboards').then(setDashes);
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  const effectiveBase = info.settings.kioskBase || `${location.protocol === 'https:' ? 'http:' : location.protocol}//${location.hostname}:${info.kioskPort}`;
-  const link = (t: Tablet) => `${effectiveBase}/?k=${encodeURIComponent(t.key)}`;
-  const save = async (t: Tablet, patch: Partial<Tablet>) => { await api.put('tablets/' + t.id, { ...t, ...patch }); load(); };
-  const copy = async (t: Tablet) => {
-    try { await navigator.clipboard.writeText(link(t)); setCopied(t.id); setTimeout(() => setCopied(''), 2000); }
-    catch { window.prompt('Skopiuj link:', link(t)); }
-  };
-
-  return (
-    <section className="a-sec">
-      <div className="a-bar">
-        <h2>Tablety</h2>
-        <button className="btn primary" onClick={async () => { await api.post('tablets', { name: 'Nowy tablet' }); load(); }}><Icon name="plus" size={18} />Dodaj tablet</button>
-      </div>
-      <p className="muted">Każdy tablet dostaje własny link z kluczem. Link otwiera tylko podgląd i sterowanie — bez ustawień. Nowy klucz unieważnia stary link.</p>
-      <div className="card">
-        <label className="field">
-          <span>Adres kiosku widziany z tabletów</span>
-          <div className="row-btns">
-            <input value={base} placeholder={effectiveBase} onChange={(e) => setBase(e.target.value)} />
-            <button className="btn" onClick={async () => onSettings(await api.put<Settings>('settings', { kioskBase: base }))}>Zapisz</button>
-          </div>
-          <small className="muted">Puste = {effectiveBase}. Ustaw np. http://192.168.1.10:{info.kioskPort}, jeśli otwierasz HA przez domenę lub reverse proxy.</small>
-        </label>
-        <label className="field">
-          <span>Adres API go2rtc (dla kamer „Bezpośrednio go2rtc”)</span>
-          <div className="row-btns">
-            <input value={g2} placeholder="http://127.0.0.1:1984" onChange={(e) => setG2(e.target.value)} />
-            <button className="btn" onClick={async () => {
-              try {
-                onSettings(await api.put<Settings>('settings', { kioskBase: base, go2rtcUrl: g2 }));
-                const s = await api.get<string[]>('go2rtc/streams');
-                setG2msg(s.length ? 'Połączono. Strumienie: ' + s.join(', ') : 'Zapisano, ale go2rtc nie odpowiada pod tym adresem.');
-              } catch (e: any) { setG2msg(e.message); }
-            }}>Zapisz i sprawdź</button>
-          </div>
-          <small className="muted">{g2msg || 'Adres widziany z add-onu (nie z tabletu), port API 1984 – nie rtsp://…:8554. Puste = http://127.0.0.1:1984 (dodatek go2rtc na tym samym HA). Tablety łączą się przez add-on, więc działa też przez HTTPS.'}</small>
-        </label>
-      </div>
-      <SipCard info={info} onSettings={onSettings} />
-      <PairCard tablets={tablets} onDone={load} />
-      <BackupCard />
-      <div className="cards">
-        {tablets.map((t) => (
-          <article key={t.id} className="card">
-            <label className="field"><span>Nazwa</span>
-              <input defaultValue={t.name} onBlur={(e) => e.target.value !== t.name && save(t, { name: e.target.value })} />
-            </label>
-            <fieldset className="field">
-              <legend>Dashboardy (pierwszy zaznaczony otwiera się na starcie)</legend>
-              {dashes.map((d) => (
-                <label key={d.id} className="check">
-                  <input type="checkbox" checked={t.dashboards.includes(d.id)}
-                    onChange={(e) => save(t, { dashboards: e.target.checked ? [...t.dashboards, d.id] : t.dashboards.filter((x) => x !== d.id) })} />
-                  {d.title}
-                  {t.dashboards[0] === d.id && <span className="pill">start</span>}
-                </label>
-              ))}
-            </fieldset>
-            <label className="check">
-              <input type="checkbox" checked={!!t.lite} onChange={(e) => save(t, { lite: e.target.checked })} />
-              Tryb Lite (słaby panel: bez rozmycia i cieni, niższa rozdzielczość 3D)
-            </label>
-            {t.lite && <label className="check" style={{ marginLeft: 26 }}>
-              <input type="checkbox" checked={!!t.intercomLiteCodec} onChange={(e) => save(t, { intercomLiteCodec: e.target.checked })} />
-              Lite: lekki kodek interkomu (G.722 – mniej pracy dla procesora; gdy „Kodek interkomu” = Automatycznie)
-            </label>}
-            <label className="check">
-              <input type="checkbox" checked={!!t.phone} onChange={(e) => save(t, { phone: e.target.checked })} />
-              Telefon / iPad użytkownika – dzwonki, pop-upy i budzenie z wyzwalaczy tylko, gdy wskazują ten tablet z nazwy
-            </label>
-            {t.phone && <p className="muted small" style={{ marginLeft: 26 }}>iPhone / iPad: otwórz link tabletu w Safari → Udostępnij → „Do ekranu początkowego”. Poza domem przez VPN.</p>}
-            <label className="field"><span>Głośność powiadomień i dzwonka (0–100%, puste = bez zmiany)</span>
-              <input type="number" min={0} max={100} step={5} defaultValue={t.notifyVolume ?? ''} onBlur={(e) => save(t, { notifyVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
-              <small className="muted">Domyślna dla dźwięków na tym panelu; głośność ustawiona w wyzwalaczu ma pierwszeństwo. Rozmowy SIP mają osobną głośność.</small>
-            </label>
-            <QuietEditor t={t} onSave={(q) => save(t, { quiet: q })} />
-            <label className="field"><span>Układ na małym ekranie</span>
-              <select value={t.layout ?? ''} onChange={(e) => save(t, { layout: (e.target.value || undefined) as Tablet['layout'] })}>
-                <option value="">Automatycznie (jedna kolumna tylko na telefonie: poniżej 500 px i widok z ponad 6 kolumnami)</option>
-                <option value="grid">Zawsze siatka dashboardu (panel ścienny, np. 480×480)</option>
-                <option value="stack">Zawsze jedna kolumna (telefon)</option>
-              </select>
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={!!t.allowDisarm} onChange={(e) => save(t, { allowDisarm: e.target.checked })} />
-              Może rozbrajać alarm (kod nadal sprawdza Home Assistant)
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={t.intercom !== false} onChange={(e) => save(t, { intercom: e.target.checked })} />
-              Interkom – może dzwonić do innych paneli i odbierać rozmowy (wymaga mikrofonu i HTTPS)
-            </label>
-            {t.intercom !== false && <fieldset className="field ic-set"><legend>Interkom – {t.name}</legend>
-              <label className="field"><span>Odbieranie</span>
-                <select value={t.intercomAuto ?? ''} onChange={(e) => save(t, { intercomAuto: (e.target.value || undefined) as Tablet['intercomAuto'] })}>
-                  <option value="">Ręcznie (Odbierz / Odrzuć)</option>
-                  <option value="on">Automatycznie – rozmowa w obie strony</option>
-                  <option value="listen">Automatycznie – tylko słuchanie (mikrofon tego panelu wyciszony do dotknięcia)</option>
-                </select>
-              </label>
-              {t.intercomAuto && <label className="field"><span>Odbierz po (s)</span>
-                <input type="number" min={0} max={30} defaultValue={t.intercomAutoDelay ?? 2} onBlur={(e) => save(t, { intercomAutoDelay: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} /></label>}
-              <label className="field"><span>Głośność rozmowy (10–100)</span>
-                <input type="number" min={10} max={100} defaultValue={t.intercomVolume ?? 80} onBlur={(e) => save(t, { intercomVolume: e.target.value === '' ? (null as unknown as undefined) : Number(e.target.value) })} />
-              </label>
-              <label className="field"><span>Kodek interkomu</span>
-                <select value={t.intercomCodec ?? ''} onChange={(e) => save(t, { intercomCodec: (e.target.value || undefined) as Tablet['intercomCodec'] })}>
-                  <option value="">Automatycznie ({t.lite && t.intercomLiteCodec ? 'G.722 – tablet Lite' : 'Opus'})</option>
-                  <option value="opus">Opus 48 kHz – najlepsza jakość, najcięższy</option>
-                  <option value="opus16">Opus 16 kHz – lżejszy, jakość VoIP</option>
-                  <option value="g722">G.722 16 kHz – bardzo lekki, „HD Voice”</option>
-                  <option value="pcmu">G.711 8 kHz – najlżejszy, jakość zwykłego telefonu</option>
-                </select>
-                <small>W rozmowie wygrywa lżejszy kodek z dwóch paneli.</small>
-              </label>
-              <label className="field"><span>Przetwarzanie mikrofonu</span>
-                <select value={t.intercomAudio ?? ''} onChange={(e) => save(t, { intercomAudio: (e.target.value || undefined) as Tablet['intercomAudio'] })}>
-                  <option value="">Automatycznie ({t.lite ? 'lekkie – tablet Lite' : 'pełne'})</option>
-                  <option value="full">Pełne – echo, szumy, wzmocnienie</option>
-                  <option value="light">Lekkie – tylko echo (słaby panel, głos „robotyczny”)</option>
-                  <option value="raw">Wyłączone (zewnętrzny mikrofon / test)</option>
-                  <option value="ptt">Krótkofalówka – przytrzymaj, aby mówić (najpewniejsze na słabym panelu)</option>
-                </select>
-              </label>
-              <SoundSelect label="Dzwonek przychodzący" value={t.intercomRing} none="— domyślny (dwutonowy) —" onChange={(v) => save(t, { intercomRing: v })} />
-              <SoundSelect label="Muzyka oczekiwania (gdy ten panel dzwoni)" value={t.intercomHold} none="— sygnał oczekiwania —" onChange={(v) => save(t, { intercomHold: v })} />
-            </fieldset>}
-            {info.settings.sip?.enabled && <TabletSip t={t} onSave={(p) => save(t, p)} />}
-            <AppSettings t={t} onSave={(p) => save(t, p)} />
-            <label className="field"><span>Link dla tabletu</span>
-              <input readOnly value={link(t)} onFocus={(e) => e.target.select()} />
-            </label>
-            <div className="row-btns">
-              <button className="btn primary" onClick={() => copy(t)}>{copied === t.id ? 'Skopiowano' : 'Kopiuj link'}</button>
-              <a className="btn" href={link(t)} target="_blank" rel="noopener">Otwórz</a>
-              <button className="btn" onClick={async () => {
-                const r = await api.post<{ delivered: number }>('tablets/' + t.id + '/popup', { title: 'Test pop-upu', subtitle: t.name, timeout: 15,
-                  rows: [] });
-                alert(r.delivered ? 'Wysłano pop-up na tablet.' : 'Tablet nie jest teraz połączony.');
-              }}>Testuj pop-up</button>
-              <button className="btn" onClick={async () => { await api.post('tablets/' + t.id + '/rekey'); load(); }}>Nowy klucz</button>
-              <button className="btn" onClick={async () => { await api.del('tablets/' + t.id); load(); }}>Usuń</button>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-};
-
 // ---------------------------------------------------------------- entities
 export const Entities: FC<{ onPick?(id: string): void; compact?: boolean }> = ({ onPick, compact }) => {
   const [all, setAll] = useState<EntityInfo[]>([]);
@@ -412,207 +457,5 @@ const BackupCard: FC = () => {
       </div>
       {msg && <p className="small">{msg}</p>}
     </div>
-  );
-};
-
-/** Android app waiting for pairing: the panel shows a 6-digit code */
-const PairCard: FC<{ tablets: Tablet[]; onDone(): void }> = ({ tablets, onDone }) => {
-  const [list, setList] = useState<PairRequest[]>([]);
-  const [code, setCode] = useState('');
-  const [codeTarget, setCodeTarget] = useState('');
-  /** chosen tablet per waiting code ('' = new tablet) */
-  const [targets, setTargets] = useState<Record<string, string>>({});
-  const [msg, setMsg] = useState('');
-  useEffect(() => {
-    let alive = true;
-    const load = () => api.get<PairRequest[]>('pair').then((l) => alive && setList(l)).catch(() => {});
-    load(); const t = setInterval(load, 3000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-  // re-pairing the same device: suggest the tablet it was paired with before
-  const guess = (p: PairRequest) => tablets.find((t) => t.appModel && t.appModel === p.device)?.id ?? '';
-  const targetOf = (p: PairRequest) => targets[p.code] ?? guess(p);
-  const pair = async (c: string, target: string, device?: string) => {
-    try {
-      const t = await api.post<Tablet>('pair/' + c, target === '' ? { name: device } : { tabletId: target });
-      setMsg(`Sparowano z „${t.name}” – panel za chwilę otworzy dashboard.`); setCode(''); onDone();
-    } catch (e: any) { setMsg(e.message); }
-  };
-  const TabletSelect: FC<{ value: string; onChange(v: string): void }> = ({ value, onChange }) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Tablet">
-      <option value="">➕ Nowy tablet</option>
-      <optgroup label="Istniejący tablet (zachowa jego dashboardy i ustawienia)">
-        {tablets.map((t) => <option key={t.id} value={t.id}>{t.name}{t.appModel ? ' · ' + t.appModel : ''}</option>)}
-      </optgroup>
-    </select>
-  );
-  return (
-    <div className="card pair-card">
-      <h3><Icon name="mdi:cellphone-link" size={20} /> Aplikacja Wall Dashboard (Android) – parowanie</h3>
-      <p className="muted small">Uruchom aplikację na panelu i wpisz adres add-onu <b>https://</b>…:8100 (opcja „ssl” w konfiguracji add-onu – bez niej nie działa mikrofon). Panel pokaże 6-cyfrowy kod – wybierz, czy to nowy tablet, czy istniejący (np. ten, którego używał Fully albo panel po ponownym parowaniu).</p>
-      {list.length > 0 && <ul className="pair-list">{list.map((p) => (
-        <li key={p.code}><b>{p.code.slice(0, 3)} {p.code.slice(3)}</b><span>{p.device || 'panel'} · {p.ip} · {Math.max(0, Math.round((Date.now() - p.at) / 60000))} min temu</span>
-          <TabletSelect value={targetOf(p)} onChange={(v) => setTargets({ ...targets, [p.code]: v })} />
-          <button className="btn primary" onClick={() => pair(p.code, targetOf(p), p.device)}>Sparuj</button></li>
-      ))}</ul>}
-      <details className="small"><summary>Wpisz kod ręcznie</summary>
-        <div className="row-btns" style={{ marginTop: 8 }}>
-          <input inputMode="numeric" maxLength={7} placeholder="kod z panelu" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ width: 140 }} />
-          <TabletSelect value={codeTarget} onChange={setCodeTarget} />
-          <button className="btn" disabled={code.length !== 6} onClick={() => pair(code, codeTarget)}>Sparuj</button>
-        </div>
-      </details>
-      {!list.length && <p className="muted small">Brak paneli czekających na sparowanie.</p>}
-      {msg && <p className="small">{msg}</p>}
-    </div>
-  );
-};
-
-const CMDS: [DeviceCmd, string][] = [['reload', 'Przeładuj'], ['saver', 'Wygaś'], ['screen-off', 'Wyłącz ekran'], ['screen-on', 'Włącz ekran'], ['restart', 'Restart aplikacji']];
-/** Screen saver / screen off and the settings PIN – used by the Android app; commands work with Fully too */
-const AppSettings: FC<{ t: Tablet; onSave(p: Partial<Tablet>): void }> = ({ t, onSave }) => {
-  const s = t.screen ?? {};
-  const [hours, setHours] = useState(s.hours ?? []);
-  const [res, setRes] = useState('');
-  const put = (p: Partial<ScreenDef>) => onSave({ screen: { ...s, hours, ...p } });
-  const setW = (i: number, p: Partial<{ from: string; to: string; days: number[] }>) => setHours(hours.map((w, j) => (j === i ? { ...w, ...p } : w)));
-  const cmd = async (c: DeviceCmd, value?: number) => {
-    const r = await api.post<{ delivered: number }>('tablets/' + t.id + '/command', { command: c, value });
-    setRes(r.delivered ? 'Wysłano.' : 'Tablet nie jest teraz połączony.');
-  };
-  return (
-    <fieldset className="field app-set"><legend>Ekran i aplikacja{t.appModel ? ` – ${t.appModel}` : ''}</legend>
-      <p className="muted small">Wygaszanie działa w aplikacji Wall Dashboard na Androida. W Fully ustaw je w samym Fully – przyciski poniżej działają w obu.</p>
-      <label className="field"><span>Wygaszanie</span>
-        <select value={s.mode ?? ''} onChange={(e) => put({ mode: (e.target.value || undefined) as ScreenDef['mode'] })}>
-          <option value="">Czarny ekran – dotknięcie budzi (domyślnie)</option>
-          <option value="dim">Przyciemnienie</option>
-          <option value="off">Wyłączenie ekranu – budzi tylko HA, pop-up lub rozmowa</option>
-        </select>
-      </label>
-      <label className="field"><span>Wygaś po (min bez dotyku, puste = nigdy)</span>
-        <input type="number" min={1} max={1440} defaultValue={s.idle ?? ''} onBlur={(e) => put({ idle: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
-      <label className="field"><span>Jasność (1–100, puste = systemowa)</span>
-        <input type="number" min={1} max={100} defaultValue={s.brightness ?? ''} onBlur={(e) => put({ brightness: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
-      {s.mode === 'dim' && <label className="field"><span>Jasność po przyciemnieniu (0–100)</span>
-        <input type="number" min={0} max={100} defaultValue={s.dimBrightness ?? 3} onBlur={(e) => put({ dimBrightness: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>}
-      <div className="field"><span>Wygaszony według godzin (dotknięcie budzi na chwilę)</span>
-        {hours.map((w, i) => (
-          <div key={i} className="quiet-row">
-            <input type="time" value={w.from} onChange={(e) => setW(i, { from: e.target.value })} aria-label="Od" />
-            <span>–</span>
-            <input type="time" value={w.to} onChange={(e) => setW(i, { to: e.target.value })} aria-label="Do" />
-            <div className="app-chips">{DAYS.map(([d, l]) => {
-              const on = !w.days?.length || w.days.includes(d);
-              return <button key={d} className={'chip' + (on ? ' on' : '')} onClick={() => {
-                const all = w.days?.length ? w.days : DAYS.map(([x]) => x);
-                const next = on ? all.filter((x) => x !== d) : [...all, d];
-                setW(i, { days: next.length === 7 ? undefined : next });
-              }}>{l}</button>;
-            })}</div>
-            <button className="mini" onClick={() => setHours(hours.filter((_, j) => j !== i))} aria-label="Usuń">×</button>
-          </div>
-        ))}
-        <div className="row-btns">
-          <button className="btn" onClick={() => setHours([...hours, { from: '23:00', to: '06:30' }])}>+ Okno</button>
-          {JSON.stringify(hours) !== JSON.stringify(s.hours ?? []) && <button className="btn primary" onClick={() => put({ hours })}>Zapisz godziny</button>}
-        </div>
-      </div>
-      <ClockEditor clock={s.clock} hasHours={hours.length > 0} onChange={(clock) => put({ clock })} />
-      <label className="field"><span>PIN do ustawień aplikacji (4–8 cyfr, puste = bez PIN-u)</span>
-        <input inputMode="numeric" maxLength={8} defaultValue={t.appPin ?? ''} onBlur={(e) => e.target.value !== (t.appPin ?? '') && onSave({ appPin: e.target.value.replace(/\D/g, '') })} />
-        <small className="muted">Ustawienia otwierasz, przytrzymując 3 s lewy górny róg ekranu.</small></label>
-      <div className="row-btns">{CMDS.map(([c, l]) => <button key={c} className="btn" onClick={() => cmd(c)}>{l}</button>)}</div>
-      {res && <small className="muted">{res}</small>}
-      <details className="small"><summary>Sterowanie z Home Assistant</summary>
-        <pre className="code">{`action: event.fire   # albo w automatyzacji: event
-data:
-  event_type: wall_dashboard_command
-  event_data:
-    tablet: "${t.name}"      # nazwa, id albo all
-    command: saver          # reload | restart | screen-on | screen-off | saver | brightness
-    value: 40               # tylko dla brightness (0–100)`}</pre>
-      </details>
-    </fieldset>
-  );
-};
-
-/** Clock on the dark screen (Android app, black screen mode) */
-const ClockEditor: FC<{ clock?: SaverClock; hasHours: boolean; onChange(c: SaverClock | undefined): void }> = ({ clock, hasHours, onChange }) => {
-  const c = clock ?? {};
-  const [add, setAdd] = useState('');
-  const set = (p: Partial<SaverClock>) => onChange({ ...c, ...p });
-  const ents = c.entities ?? [];
-  return (
-    <fieldset className="field quiet-ed"><legend>Zegar na wygaszonym ekranie (czarny ekran)</legend>
-      <label className="check"><input type="checkbox" checked={!!c.night} onChange={(e) => set({ night: e.target.checked || undefined })} />W trybie nocnym (okna godzinowe powyżej){!hasHours && <small className="muted"> – dodaj okno, np. 23:00–6:30</small>}</label>
-      <label className="check"><input type="checkbox" checked={!!c.idle} onChange={(e) => set({ idle: e.target.checked || undefined })} />Po wygaszeniu w dzień (brak dotyku, „Wygaś” z HA)</label>
-      {(c.night || c.idle) && <>
-        <label className="check"><input type="checkbox" checked={!!c.date} onChange={(e) => set({ date: e.target.checked || undefined })} />Dzień tygodnia i data</label>
-        <label className="check"><input type="checkbox" checked={!!c.calls} onChange={(e) => set({ calls: e.target.checked || undefined })} />Nieodebrane dzwonki (tylko gdy są)</label>
-        <label className="field"><span>Jasność ekranu z zegarem (1–60 %, domyślnie 8)</span>
-          <input type="number" min={1} max={60} defaultValue={c.brightness ?? ''} placeholder="8" onBlur={(e) => set({ brightness: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
-        <div className="field"><span>Wartości pod zegarem (do 4) – np. temperatura na zewnątrz, alarm</span>
-          {ents.map((x, i) => (
-            <div key={x.entity} className="clk-row">
-              <code className="small" title={x.entity}>{x.entity}</code>
-              <input placeholder="podpis" defaultValue={x.label ?? ''} onBlur={(e) => set({ entities: ents.map((y, j) => (j === i ? { entity: y.entity, ...(e.target.value.trim() ? { label: e.target.value.trim() } : {}) } : y)) })} />
-              <button className="mini" onClick={() => set({ entities: ents.filter((_, j) => j !== i) })} aria-label={'Usuń ' + x.entity}>×</button>
-            </div>
-          ))}
-          {ents.length < 4 && <div className="row-btns">
-            <input list="ents-saver" placeholder="sensor.temperatura_zewnatrz" value={add} onChange={(e) => setAdd(e.target.value.trim())} />
-            <button className="btn" disabled={!add} onClick={() => { if (!ents.some((y) => y.entity === add)) set({ entities: [...ents, { entity: add }] }); setAdd(''); }}>Dodaj</button>
-          </div>}
-          <datalist id="ents-saver">{[...hass.states.keys()].filter((e) => /^(sensor|binary_sensor|alarm_control_panel|lock|weather|input_number|climate)\./.test(e)).map((e) => <option key={e} value={e} />)}</datalist>
-        </div>
-        <p className="muted small">Zegar jest przygaszony i co minutę lekko się przesuwa (ochrona ekranu). Dotknięcie wraca do dashboardu.</p>
-      </>}
-    </fieldset>
-  );
-};
-
-const DAYS: [number, string][] = [[1, 'pn'], [2, 'wt'], [3, 'śr'], [4, 'cz'], [5, 'pt'], [6, 'sb'], [0, 'nd']];
-/** Quiet mode of a panel: schedule (several windows, weekdays), HA entity, current state. */
-const QuietEditor: FC<{ t: Tablet & { quietNow?: { on: boolean; reason?: string; until?: number } }; onSave(q: Tablet['quiet']): void }> = ({ t, onSave }) => {
-  const q = t.quiet ?? {};
-  const [hours, setHours] = useState(q.hours ?? []);
-  const [entity, setEntity] = useState(q.entity ?? '');
-  const dirty = JSON.stringify(hours) !== JSON.stringify(q.hours ?? []) || entity !== (q.entity ?? '');
-  const now = t.quietNow;
-  const hh = (v?: number) => (v ? new Date(v).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '');
-  const setW = (i: number, p: Partial<{ from: string; to: string; days: number[] }>) => setHours(hours.map((w, j) => (j === i ? { ...w, ...p } : w)));
-  return (
-    <fieldset className="field quiet-ed"><legend>Cisza – bez dźwięków, dzwonków i mowy</legend>
-      <p className="muted small">Teraz: <b>{now?.on ? `cisza${now.until ? ' do ' + hh(now.until) : ''} (${now.reason === 'hours' ? 'harmonogram' : now.reason === 'entity' ? 'encja HA' : 'ręcznie z panelu'})` : 'dźwięki włączone'}</b>
-        {q.manual && <> · <button className="mini" onClick={() => onSave({ ...q, manual: undefined })}>Usuń ręczne ustawienie</button></>}</p>
-      {hours.map((w, i) => (
-        <div key={i} className="quiet-row">
-          <input type="time" value={w.from} onChange={(e) => setW(i, { from: e.target.value })} aria-label="Od" />
-          <span>–</span>
-          <input type="time" value={w.to} onChange={(e) => setW(i, { to: e.target.value })} aria-label="Do" />
-          <div className="app-chips">{DAYS.map(([d, l]) => {
-            const on = !w.days?.length || w.days.includes(d);
-            return <button key={d} className={'chip' + (on ? ' on' : '')} onClick={() => {
-              const all = w.days?.length ? w.days : DAYS.map(([x]) => x);
-              const next = on ? all.filter((x) => x !== d) : [...all, d];
-              setW(i, { days: next.length === 7 ? undefined : next });
-            }}>{l}</button>;
-          })}</div>
-          <button className="mini" onClick={() => setHours(hours.filter((_, j) => j !== i))} aria-label="Usuń">×</button>
-        </div>
-      ))}
-      <div className="row-btns">
-        <button className="btn" onClick={() => setHours([...hours, { from: '22:00', to: '07:00' }])}>+ Okno ciszy</button>
-        {!hours.length && <button className="btn" onClick={() => setHours([{ from: '22:00', to: '06:30', days: [0, 1, 2, 3, 4] }, { from: '23:00', to: '08:30', days: [5, 6] }])}>Typowy: w tygodniu 22–6:30, weekend 23–8:30</button>}
-      </div>
-      <label className="field"><span>…albo gdy encja HA jest włączona (opcjonalnie)</span>
-        <input list="ents-quiet" value={entity} onChange={(e) => setEntity(e.target.value.trim())} placeholder="np. input_boolean.cisza_pietro" />
-      </label>
-      <datalist id="ents-quiet">{[...hass.states.keys()].filter((e) => /^(input_boolean|switch|binary_sensor)\./.test(e)).map((e) => <option key={e} value={e} />)}</datalist>
-      <label className="check"><input type="checkbox" checked={!!q.intercomSilent} onChange={(e) => onSave({ ...q, hours, entity: entity || undefined, intercomSilent: e.target.checked || undefined })} />W ciszy nie przyjmuj rozmów z interkomu ani z centrali SIP (dzwoniący zobaczy „Panel jest zajęty”, centrala dostaje „zajęty”)</label>
-      {dirty && <button className="btn primary" onClick={() => onSave({ ...q, hours, entity: entity || undefined })}>Zapisz ciszę</button>}
-      <p className="muted small">Na panelu włączysz ją też ręcznie kafelkiem „Cisza (ten panel)” – ręczne ustawienie wygrywa z harmonogramem do końca bieżącego okna. W ciszy pop-upy i wybudzanie ekranu działają, nie ma tylko dźwięku i mowy; interkom nie odbiera automatycznie.</p>
-    </fieldset>
   );
 };

@@ -379,6 +379,8 @@ export interface Tablet {
   appPin?: string;
   /** Wall Dashboard Android app: device model reported when paired */
   appModel?: string;
+  /** last connection of the kiosk: time (updated on disconnect), app ("wa:0.1.4" Android app, "fully", "browser"), screen size */
+  seen?: { at: number; app?: string; screen?: string };
   /** volume of notifications / doorbell sounds on this panel (system media volume, %); a trigger's own volume wins */
   notifyVolume?: number;
   /** SIP call: system volume during a call (%, default 100) and software boost of the other side's voice (%, 100 = as received) */
@@ -519,6 +521,8 @@ export type ServerMsg =
   | { type: 'ha'; connected: boolean }
   | { type: 'result'; id: number; ok: boolean; error?: string }
   | { type: 'dashboards-changed'; ids: string[] }
+  /** editor draft shown on this tablet until the given time ("Podgląd na tablecie") */
+  | { type: 'preview'; doc: DashboardDoc; until: number }
   | { type: 'webrtc'; id: number; event: WebRtcEvent }
   | { type: 'popup'; popup: PopupDef }
   | { type: 'wake'; wake: WakeOptions }
@@ -701,3 +705,20 @@ export interface QuietDef {
   intercomSilent?: boolean;
 }
 export interface QuietState { on: boolean; reason?: 'manual' | 'hours' | 'entity'; until?: number }
+
+/** live state of a tablet (admin, GET tablets / status) */
+export interface TabletPresence {
+  online: boolean; since?: number; lastSeen?: number; app?: string; /** reported screen size, e.g. 1920x1080 */ display?: string; sipRegistered?: boolean;
+  quietNow?: QuietState;
+}
+export type TabletLive = Tablet & TabletPresence;
+export interface StatusWarning { level: 'err' | 'warn'; title: string; text: string; page: string; tablet?: string }
+export interface StatusInfo {
+  version: string; latestApp: string; ha: boolean; https: boolean;
+  sip: { ok: boolean; err?: string; ws: string; doors: string[]; registered: (string | undefined)[] } | null;
+  go2rtc: { ok: boolean; streams: number } | null;
+  tablets: ({ id: string; name: string; phone: boolean; ext?: string } & TabletPresence)[];
+  warnings: StatusWarning[];
+  calls: { today: number; missedToday: number; missed: number; last: (CallRecord & { byName?: string })[] };
+  quiet: { name: string; until?: number }[];
+}
