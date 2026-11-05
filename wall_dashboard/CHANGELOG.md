@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.8
+- Widget robota ma własny margines wewnętrzny – przy małym „Marginesie wewn.” kafelka ikona, przyciski i pokoje nie dotykają już krawędzi.
+
 ## 1.3.7
 - Nawadnianie **Rain Bird IQ4** (integracja Chapter-322/rainbird_iq4 1.8–1.10):
   - czas strefy do **100 min** (wcześniej 30);

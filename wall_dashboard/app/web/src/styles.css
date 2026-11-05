@@ -1448,12 +1448,13 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 /* robot: Dyson Spot+Scrub / Vis Nav – dock, rooms, coverage map */
 .rb-dock { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* layout: one column; wide tile (≥ 640 px) = controls on the left, rooms on the right */
-.rb { container-type: inline-size; }
+.rb { container-type: inline-size; padding: 6px 8px; box-sizing: border-box; }
+/* the tile itself may have a small inner margin (Wygląd → Margines wewn.) – keep the robot off the edges anyway */
 .rb-grid { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 0 1 auto; }
 .rb-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 @container (min-width: 640px) {
   .rb-grid { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 16px; align-items: start; flex: 1 1 auto; }
-  .rb-rooms { border-left: 1px solid var(--line); padding-left: 16px; max-height: 100%; overflow-y: auto; }
+  .rb-rooms { border-left: 1px solid var(--line); padding: 0 2px 2px 16px; max-height: 100%; overflow-y: auto; }
 }
 @container (min-width: 500px) { .rb-acts .rb-b:not(.ghost) { flex: 1 1 0; max-width: 220px; } }
 .rb-b { white-space: nowrap; padding: 0 10px; }
