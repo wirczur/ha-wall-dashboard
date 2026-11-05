@@ -188,8 +188,18 @@ export const WidgetInspector: FC<{
           // hass-dyson (Spot+Scrub, Vis Nav): current room, dock, clean coverage image, cleaning mode, rooms from the per-room selects
           const byKey = (k: string) => d.entities.find((e) => e.key === k)?.entity_id;
           const room = byKey('robot_current_room'), dock = byKey('robot_dock_state'), dockTimer = byKey('robot_dock_timer_end'), coverage = byKey('clean_coverage') ?? byKey('dust_map'), cleanMode = byKey('spot_scrub_cleaning_mode');
-          const rooms = d.entities.map((e) => { const m = /_room_(\d+)_cleaning_mode$/.exec(e.uid ?? ''); return m ? { id: m[1], name: (e.orig ?? e.name).replace(/\s*cleaning mode$/i, '').trim() } : null; })
-            .filter((x): x is { id: string; name: string } => !!x);
+          // per-room settings selects of hass-dyson: <serial>_room_<id>_<setting>
+          const RS: Record<string, string> = { cleaning_mode: 'mode', vacuum_power: 'power', hydration: 'water', wash_repetitions: 'wash' };
+          const byRoom = new Map<string, Record<string, string>>();
+          for (const e of d.entities) {
+            const m = /_room_(\d+)_(cleaning_mode|vacuum_power|hydration|wash_repetitions)$/.exec(e.uid ?? '');
+            if (!m) continue;
+            const r = byRoom.get(m[1]) ?? { id: m[1] };
+            r[RS[m[2]]] = e.entity_id;
+            if (m[2] === 'cleaning_mode' || !r.name) r.name = (e.orig ?? e.name).replace(/\s*(cleaning mode|vacuum power|hydration|wash repetitions)$/i, '').trim();
+            byRoom.set(m[1], r);
+          }
+          const rooms = [...byRoom.values()] as { id: string; name: string }[];
           const own = [main, battery, error, room, dock, dockTimer, coverage, cleanMode];
           const extras = d.entities.filter((e) => !e.category && !own.includes(e.entity_id) && /^(button|select|number|switch|sensor|binary_sensor|input_button)\./.test(e.entity_id)).map((e) => e.entity_id).slice(0, 12);
           set({ entity: main, title: w.title || d.name, icon: w.icon || (main.startsWith('lawn_mower.') ? 'mdi:robot-mower' : 'mdi:robot-vacuum'),
@@ -732,7 +742,7 @@ const ViewMini: FC<{ view?: ViewDef }> = ({ view }) => {
 };
 
 /** Rooms of a Dyson robot (hass_dyson.start_zone_clean takes their id or MyDyson name) */
-const RoomsF: FC<{ value?: { id: string; name: string }[]; onChange(v: { id: string; name: string }[] | undefined): void }> = ({ value = [], onChange }) => {
+const RoomsF: FC<{ value?: { id: string; name: string; mode?: string }[]; onChange(v: { id: string; name: string; mode?: string }[] | undefined): void }> = ({ value = [], onChange }) => {
   const set = (i: number, p: Partial<{ id: string; name: string }>) => onChange(value.map((r, j) => (j === i ? { ...r, ...p } : r)));
   return (
     <div className="ins-row"><label>Pokoje</label>
@@ -741,11 +751,12 @@ const RoomsF: FC<{ value?: { id: string; name: string }[]; onChange(v: { id: str
           <div key={i} className="row-btns">
             <input style={{ width: 60 }} value={r.id} placeholder="id" onChange={(e) => set(i, { id: e.target.value })} aria-label="Id pokoju" />
             <input style={{ flex: 1 }} value={r.name} placeholder="nazwa jak w MyDyson" onChange={(e) => set(i, { name: e.target.value })} aria-label="Nazwa pokoju" />
+            {r.mode && <small className="muted" title="Ustawienia pokoju z hass-dyson (tryb, moc, woda, mycie)">⚙</small>}
             <button className="mini" onClick={() => { const n = value.filter((_, j) => j !== i); onChange(n.length ? n : undefined); }} aria-label={'Usuń ' + r.name}>×</button>
           </div>
         ))}
         <button className="btn" onClick={() => onChange([...value, { id: '', name: '' }])}>+ Pokój</button>
-        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. W kafelku: wybierz pokoje → „Sprzątaj wybrane”.</small>
+        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub) razem z ich ustawieniami (⚙ – tryb, moc, woda, mycie; w kafelku przycisk z zębatką). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. W kafelku: wybierz pokoje → „Sprzątaj wybrane”.</small>
       </div>
     </div>
   );

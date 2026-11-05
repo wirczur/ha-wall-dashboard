@@ -21,7 +21,16 @@ const STATUS_PL: Record<string, string> = {
 /** hass-dyson dock states (firmware vocabulary, only partly known) */
 const DOCK_PL: Record<string, string> = { drying_mop: 'suszy mop', drying: 'suszy', washing_mop: 'pierze mop', washing: 'pierze', emptying: 'opróżnia pojemnik', emptying_bin: 'opróżnia pojemnik', charging: 'ładuje', idle: 'gotowa', refilling: 'uzupełnia wodę', draining: 'spuszcza wodę' };
 const dockPl = (v: string) => DOCK_PL[v.toLowerCase()] ?? v.toLowerCase().replace(/_/g, ' ');
-const MODES: [string, string][] = [['', 'Jak w pokoju'], ['vacuum_only', 'Odkurzanie'], ['vacuum_and_mop', 'Odkurz. + mop'], ['mop_only', 'Tylko mop'], ['vacuum_then_mop', 'Najpierw odkurz., potem mop']];
+const MODES: [string, string][] = [['', 'Tryb: jak w ustawieniach pokoju'], ['vacuum_only', 'Odkurzanie'], ['vacuum_and_mop', 'Odkurz. + mop'], ['mop_only', 'Tylko mop'], ['vacuum_then_mop', 'Najpierw odkurz., potem mop']];
+/** per-room settings of hass-dyson (Spot+Scrub): select entities, options as the integration names them */
+type Room = { id: string; name: string; mode?: string; power?: string; water?: string; wash?: string };
+const ROOM_SET: [keyof Room, string, Record<string, string>][] = [
+  ['mode', 'Tryb', { vacuum_only: 'Odkurzanie', vacuum_and_mop: 'Odkurzanie + mop', mop_only: 'Tylko mop', vacuum_then_mop: 'Najpierw odkurzanie, potem mop' }],
+  ['power', 'Moc', { auto: 'Auto', boost: 'Boost', quiet: 'Cicho', quick: 'Szybko' }],
+  ['water', 'Woda (mop)', { very_low: 'Bardzo mało', low: 'Mało', medium: 'Średnio', high: 'Dużo' }],
+  ['wash', 'Mycie mopa', { '1x': '1 raz', '2x': '2 razy' }]
+];
+const MODE_SHORT: Record<string, string> = { vacuum_only: 'odkurzanie', vacuum_and_mop: 'odkurz. + mop', mop_only: 'mop', vacuum_then_mop: 'odkurz. → mop' };
 const valid = (x?: HassState) => !!x && !['unknown', 'unavailable', 'none', ''].includes(String(x.state).toLowerCase());
 const hhmm = (iso: string) => { const d = new Date(iso); return isNaN(+d) || d.getTime() < Date.now() ? '' : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); };
 const statusPl = (v: unknown) => { const t = String(v ?? '').trim(); return STATUS_PL[t.toLowerCase().replace(/_/g, ' ')] ?? t; };
@@ -43,7 +52,9 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
   const o = w.options ?? {};
   const s = useEntity(w.entity);
   const [bat, err, room, dock, dockTimer] = useEntities([o.battery ?? '', o.error ?? '', o.room ?? '', o.dock ?? '', o.dockTimer ?? '']);
-  const rooms: { id: string; name: string }[] = Array.isArray(o.rooms) ? o.rooms.filter((r: any) => r && (r.name || r.id)) : [];
+  const rooms: Room[] = Array.isArray(o.rooms) ? o.rooms.filter((r: any) => r && (r.name || r.id)) : [];
+  const roomModes = useEntities(rooms.map((r) => r.mode ?? ''));
+  const [roomCfg, setRoomCfg] = useState(false);
   const [pick, setPick] = useState<string[]>([]);
   const [mode, setMode] = useState('');
   const [map, setMap] = useState(false);
@@ -117,11 +128,13 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
       {!mower && rooms.length > 0 && w.h > 4 && (
         <div className="rb-rooms">
           <div className="rb-room-list" role="group" aria-label="Pokoje">
-            {rooms.map((r) => { const k = r.id || r.name; const on = pick.includes(k); return (
-              <button key={k} aria-pressed={on} className={roomName && r.name === roomName ? 'here' : ''} onClick={() => setPick(on ? pick.filter((x) => x !== k) : [...pick, k])}>{r.name || 'pokój ' + r.id}</button>); })}
+            {rooms.map((r, i) => { const k = r.id || r.name; const on = pick.includes(k); const m = roomModes[i]?.state; return (
+              <button key={k} aria-pressed={on} className={roomName && r.name === roomName ? 'here' : ''} onClick={() => setPick(on ? pick.filter((x) => x !== k) : [...pick, k])}>
+                {r.name || 'pokój ' + r.id}{m && MODE_SHORT[m] ? <small> · {MODE_SHORT[m]}</small> : null}</button>); })}
+            {rooms.some((r) => r.mode || r.power || r.water || r.wash) && <button className="rb-cfg" onClick={() => setRoomCfg(true)} aria-label="Ustawienia pokoi" title="Ustawienia pokoi: tryb, moc, woda, mycie"><Icon name="mdi:cog-outline" size={18} /></button>}
           </div>
           {pick.length > 0 && <>
-            {o.cleanMode && <select className="rb-mode" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Tryb sprzątania">{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
+            <select className="rb-mode" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Tryb sprzątania">{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <button className="rb-b primary" onClick={cleanRooms} disabled={active}><Icon name="mdi:broom" size={18} />Sprzątaj wybrane ({pick.length})</button>
           </>}
         </div>
@@ -135,8 +148,43 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
           return <PanelRowView key={e} row={{ entity: e, name: name.charAt(0).toUpperCase() + name.slice(1) } as PanelRow} onError={(m) => notify?.(m)} />;
         })}</div>
       )}
+      {roomCfg && <RoomSettings rooms={rooms} busy={active} title={w.title || friendly(s, s.entity_id)} onClose={() => setRoomCfg(false)} notify={notify} />}
       {map && o.coverage && <RobotMap entity={o.coverage} title={(w.title || friendly(s, s.entity_id)) + (roomName ? ' · ' + roomName : '')} live={active} onClose={() => setMap(false)} />}
     </div>
+  );
+};
+
+/** per-room settings (hass-dyson writes them only while the robot is docked) */
+const RoomSettings: FC<{ rooms: Room[]; busy: boolean; title: string; onClose(): void; notify?: (m: string) => void }> = ({ rooms, busy, title, onClose, notify }) => {
+  const ids = rooms.flatMap((r) => ROOM_SET.map(([k]) => (r[k] as string | undefined) ?? ''));
+  const st = useEntities(ids);
+  return createPortal(
+    <div className="rb-map" onClick={onClose} role="dialog" aria-label="Ustawienia pokoi">
+      <div className="rb-map-box rb-rcfg" onClick={(e) => e.stopPropagation()}>
+        <div className="rb-map-h"><b>{title} · pokoje</b><button className="rb-b ghost" onClick={onClose} aria-label="Zamknij"><Icon name="close" size={20} /></button></div>
+        {busy && <small className="rb-warn">Robot sprząta – ustawienia pokoi da się zmienić dopiero, gdy wróci do stacji.</small>}
+        <div className="rb-rcfg-list">
+          {rooms.map((r, ri) => (
+            <div key={r.id || r.name} className="rb-rcfg-row">
+              <b>{r.name}</b>
+              {ROOM_SET.map(([k, label, opts], si) => {
+                const ent = r[k] as string | undefined; if (!ent) return null;
+                const x = st[ri * ROOM_SET.length + si];
+                const options = (x?.attributes.options as string[] | undefined) ?? Object.keys(opts);
+                return (
+                  <label key={k}><span>{label}</span>
+                    <select value={x?.state ?? ''} disabled={busy || !x || x.state === 'unavailable'}
+                      onChange={(e) => hass.call('select', 'select_option', { option: e.target.value }, ent).catch((er: Error) => notify?.(er.message))}>
+                      {!options.includes(x?.state ?? '') && <option value={x?.state ?? ''}>—</option>}
+                      {options.map((v) => <option key={v} value={v}>{opts[v] ?? v}</option>)}
+                    </select></label>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>, document.body
   );
 };
 

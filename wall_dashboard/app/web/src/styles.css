@@ -1458,3 +1458,13 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 .rb-map-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .rb-map-box img { max-width: 100%; max-height: calc(100vh - 140px); object-fit: contain; border-radius: 12px; background: #fff; }
 .rb-map-box small { color: var(--muted); text-align: center; }
+.rb-room-list button small { font-weight: 500; opacity: .75; }
+.rb-cfg { min-height: 36px; width: 36px; border-radius: 18px; border: 1px solid var(--line); background: transparent; color: var(--fg); display: grid; place-items: center; }
+.rb-rcfg { width: min(720px, 100%); overflow-y: auto; }
+.rb-rcfg-list { display: flex; flex-direction: column; gap: 10px; }
+.rb-rcfg-row { display: grid; grid-template-columns: 120px repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-items: end; padding: 10px; border-radius: 14px; background: rgba(var(--ink), .05); }
+.rb-rcfg-row > b { align-self: center; }
+.rb-rcfg-row label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.rb-rcfg-row select { min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface, #15181e); color: var(--fg); padding: 0 8px; font-weight: 600; }
+.rb-warn { color: var(--warn, #F2C46B); }
+@media (max-width: 560px) { .rb-rcfg-row { grid-template-columns: 1fr 1fr; } .rb-rcfg-row > b { grid-column: 1 / -1; } }

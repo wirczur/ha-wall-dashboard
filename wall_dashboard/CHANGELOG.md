@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4
+- Robot Dyson Spot+Scrub: **ustawienia pokoi** z kafelka (przycisk z zębatką) – tryb (odkurzanie / odkurzanie + mop / tylko mop / najpierw odkurzanie, potem mop), moc, ilość wody, mycie mopa; przy pokojach widać ich tryb. Wybór trybu przy „Sprzątaj wybrane” jest zawsze widoczny (wcześniej tylko z encją „Tryb sprzątania”).
+- „Wykryj urządzenie” zbiera wszystkie ustawienia pokoi z hass-dyson.
+
 ## 1.3.3
 - **Robot Dyson (hass-dyson 0.39, Spot+Scrub / Vis Nav)** w widgecie *Robot*:
   - aktualny pokój przy stanie, stan stacji dokującej z godziną końca;
