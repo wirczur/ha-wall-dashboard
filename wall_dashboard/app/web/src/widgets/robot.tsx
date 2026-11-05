@@ -50,10 +50,19 @@ const MOW = { START: 1, PAUSE: 2, DOCK: 4 };
 
 export const isRobot = (e?: string) => !!e && /^(vacuum|lawn_mower)\./.test(e);
 
-/** Battery %: dedicated sensor (HA 2025.8+ moved it out of the vacuum) or the old battery_level attribute. */
+/** Battery %: dedicated sensor (HA 2025.8+ moved it out of the vacuum), the old battery_level attribute or "battery" (Navimow). */
 function batteryOf(main: HassState, sensor?: HassState): number | undefined {
-  const v = sensor ? Number(sensor.state) : Number(main.attributes.battery_level);
-  return isFinite(v) && (sensor ? sensor.state !== '' : main.attributes.battery_level != null) ? Math.round(v) : undefined;
+  if (sensor && sensor.state !== '' && isFinite(Number(sensor.state))) return Math.round(Number(sensor.state));
+  const a = main.attributes.battery_level ?? main.attributes.battery;
+  return a != null && a !== '' && isFinite(Number(a)) ? Math.round(Number(a)) : undefined;
+}
+/** Wi-Fi / 4G signal of a mower (Navimow: attribute signal_strength – dBm when negative, else %) */
+function signalOf(a: Record<string, unknown>): { text: string; icon: string } | null {
+  const v = Number(a.signal_strength ?? a.rssi);
+  if (a.signal_strength == null && a.rssi == null || !isFinite(v)) return null;
+  const pct = v < 0 ? Math.max(0, Math.min(100, 2 * (v + 100))) : Math.min(100, v);
+  const icon = pct >= 75 ? 'mdi:wifi-strength-4' : pct >= 50 ? 'mdi:wifi-strength-3' : pct >= 25 ? 'mdi:wifi-strength-2' : pct > 0 ? 'mdi:wifi-strength-1' : 'mdi:wifi-strength-off-outline';
+  return { text: v < 0 ? v + ' dBm' : Math.round(v) + '%', icon };
 }
 const batIcon = (b: number, charging: boolean) => charging ? 'mdi:battery-charging' : b >= 95 ? 'mdi:battery' : b < 10 ? 'mdi:battery-outline' : `mdi:battery-${Math.floor(b / 10) * 10}`;
 
@@ -78,7 +87,9 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
   const charging = st === 'charging' || /charg|ładuj/i.test(String(a.status ?? '')) || bat?.attributes.charging === true;
   const battery = batteryOf(s, bat);
   const active = ACTIVE.has(st);
-  const errorText = st === 'error' ? String(err?.state && !['unknown', 'unavailable', 'none', ''].includes(err.state) ? err.state : a.error ?? a.status ?? '') : '';
+  const errAttr = a.error != null && !['', 'none', 'null', '0', 'no_error', 'ok'].includes(String(a.error).toLowerCase()) ? String(a.error) : '';
+  const errorText = st === 'error' ? String(err?.state && !['unknown', 'unavailable', 'none', ''].includes(err.state) ? err.state : errAttr || a.status || '') : '';
+  const signal = signalOf(a);
   const statusText = (mower ? (st === 'paused' ? 'Wstrzymana' : st === 'idle' ? 'Gotowa' : STATE_PL[st]) : STATE_PL[st]) ?? (a.status ? String(a.status) : st);
   const sub = !errorText && a.status && String(a.status).toLowerCase() !== st ? statusPl(a.status) : '';
   const roomName = valid(room) ? String(room!.state) : '';
@@ -111,6 +122,7 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
           <span className="rb-state">{statusText}{roomName ? <small> · {roomName}</small> : sub ? <small> · {sub}</small> : null}</span>
           {dockText && <small className="rb-dock"><Icon name="mdi:home-import-outline" size={13} /> stacja: {dockText}</small>}
         </div>
+        {signal && w.w >= 4 && <div className="rb-sig" title={'Zasięg ' + signal.text} aria-label={'Zasięg ' + signal.text}><Icon name={signal.icon} size={18} /></div>}
         {battery != null && (
           <div className={'rb-bat' + (battery < 20 ? ' low' : '')} aria-label={`Bateria ${battery}%`}>
             <Icon name={batIcon(battery, charging)} size={20} /><b>{battery}%</b>

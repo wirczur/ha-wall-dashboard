@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.6
+- Robot koszący **Segway Navimow** (oficjalna integracja NavimowHA 1.1.x): bateria z atrybutu `battery` (bez osobnego czujnika), ikona zasięgu z `signal_strength`, opis błędu z atrybutu `error`.
+
 ## 1.3.5
 - Widget robota – nowy wygląd pokoi: siatka kafelków z nazwą i ikonami trybu (odkurzanie / mop), znacznik pokoju, w którym jest robot, „Wszystkie / Żaden”, ustawienia pokoi w nagłówku. Szeroki kafelek: sterowanie po lewej, pokoje po prawej; przyciski nie rozciągają się na całą szerokość.
 - Pokoje mogą mieć **nazwę wyświetlaną** (np. „Salon” zamiast „Living room2”) – nazwa z MyDyson zostaje do sterowania robotem.
