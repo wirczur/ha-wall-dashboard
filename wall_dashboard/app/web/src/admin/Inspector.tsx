@@ -817,7 +817,7 @@ const LevelsF: FC<{ o: Record<string, any>; opt(k: string, v: unknown): void; en
 
 /** Rain Bird IQ4: zones, programs, rain delay and connection – found automatically or picked by hand. */
 const IrrigationF: FC<{ o: Record<string, any>; set(p: Record<string, unknown>): void; opt(k: string, v: unknown): void }> = ({ o, set, opt }) => {
-  const found = () => { const d = discoverIq4(hass.states.values()); set({ stations: d.stations, programs: d.programs, rainDelay: d.rainDelay, connected: d.connected }); };
+  const found = () => { const d = discoverIq4(hass.states.values()); set(clean({ stations: d.stations, programs: d.programs, rainDelay: d.rainDelay, connected: d.connected, mode: d.mode, alarms: d.alarms, warnings: d.warnings, rainSensor: d.rainSensor, forecast: d.forecast }) as Record<string, unknown>); };
   return (
     <>
       <div className="row-btns"><button className="btn primary" onClick={found}>Wykryj strefy i programy Rain Bird IQ4</button></div>
@@ -825,12 +825,21 @@ const IrrigationF: FC<{ o: Record<string, any>; set(p: Record<string, unknown>):
       <EntityListF label="Programy (sensory Program … Status)" value={o.programs === false ? [] : o.programs} onChange={(v) => opt('programs', v)} />
       <EntityF label="Opóźnienie deszczowe" value={o.rainDelay} domains={['sensor']} onChange={(v) => opt('rainDelay', v)} />
       <EntityF label="Połączenie (binary_sensor Connected)" value={o.connected} domains={['binary_sensor']} onChange={(v) => opt('connected', v)} hint="używane też jako sterownik dla „Zatrzymaj wszystko” i opóźnienia" />
-      <NumF label="Domyślny czas strefy (min)" value={o.duration ?? 10} min={1} max={30} onChange={(v) => opt('duration', v)} />
+      <EntityF label="Tryb sterownika (sensor Controller Mode)" value={o.mode} domains={['sensor']} onChange={(v) => opt('mode', v)} hint="przy „off” kafelek ostrzega, że programy nie ruszą" />
+      <div className="ins-grid2">
+        <EntityF label="Alarmy (sensor)" value={o.alarms} domains={['sensor']} onChange={(v) => opt('alarms', v)} />
+        <EntityF label="Ostrzeżenia (sensor)" value={o.warnings} domains={['sensor']} onChange={(v) => opt('warnings', v)} />
+      </div>
+      <div className="ins-grid2">
+        <EntityF label="Czujnik deszczu (binary_sensor)" value={o.rainSensor} domains={['binary_sensor']} onChange={(v) => opt('rainSensor', v)} />
+        <EntityF label="Opóźnienie wg prognozy (binary_sensor)" value={o.forecast} domains={['binary_sensor']} onChange={(v) => opt('forecast', v)} />
+      </div>
+      <NumF label="Domyślny czas strefy (min)" value={o.duration ?? 10} min={1} max={100} onChange={(v) => opt('duration', v)} />
       <div className="ins-grid2">
         <CheckF label="Przyciski opóźnienia" value={o.delayButtons !== false} onChange={(v) => opt('delayButtons', v ? undefined : false)} />
         <CheckF label="Ukryj nieaktywne programy" value={o.hideInactivePrograms} onChange={(v) => opt('hideInactivePrograms', v || undefined)} />
       </div>
-      <p className="muted small">Wymaga integracji rainbird_iq4 z HACS. Strefy uruchamiane są usługą rainbird_iq4.start_zone (1–30 min).</p>
+      <p className="muted small">Wymaga integracji rainbird_iq4 z HACS. Strefy uruchamiane są usługą rainbird_iq4.start_zone (1–100 min, integracja 1.9+). Od wersji 1.8 każda strefa jest osobnym urządzeniem w HA – „Wykryj” i tak znajdzie wszystkie.</p>
     </>
   );
 };

@@ -1,5 +1,5 @@
-// Rain Bird IQ4 (github.com/davidsuarez82/rainbird_iq4): zones with per-zone duration, start / stop,
-// stop all, programs (run now, next run), rain delay and cloud connection.
+// Rain Bird IQ4 (github.com/Chapter-322/rainbird_iq4, 1.8+): zones with per-zone duration (1–100 min), start / stop,
+// stop all, programs (run now, next run), rain delay, rain sensor, forecast delay, controller mode, alarms and cloud connection.
 import { useEffect, useState, type FC } from 'react';
 import type { HassState, WidgetDef } from '../../../shared/types';
 import { hass, useEntities, useEntity } from '../lib/hass';
@@ -21,7 +21,12 @@ export function discoverIq4(states: Iterable<HassState>) {
     stations, programs,
     rainDelay: pick('sensor', /rain_delay/),
     connected: pick('binary_sensor', /_connected$|_polaczon/),
-    anyRunning: pick('binary_sensor', /any_zone_running/)
+    anyRunning: pick('binary_sensor', /any_zone_running/),
+    mode: pick('sensor', /controller_mode|tryb_sterownika/),
+    alarms: pick('sensor', /_alarms$|_alarmy$/),
+    warnings: pick('sensor', /_warnings$|_ostrzezenia$/),
+    rainSensor: pick('binary_sensor', /rain_sensor|czujnik_deszczu/),
+    forecast: pick('binary_sensor', /forecast_rain_delay|prognoz/)
   };
 }
 
@@ -37,6 +42,14 @@ function leftOf(s: HassState): string {
   if (typeof r === 'number') { const t = Math.round(r); return t >= 60 ? `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : `${t} s`; }
   return String(r);
 }
+/** "ostatnio wt 06:00" from the station's last_run */
+function lastRun(v: unknown) {
+  if (!v) return '';
+  const d = new Date(String(v)); if (isNaN(+d) || d.getFullYear() < 2000) return '';
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(+d).setHours(0, 0, 0, 0)) / 86400000);
+  const t = d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  return 'ostatnio ' + (days === 0 ? 'dziś ' + t : days === 1 ? 'wczoraj ' + t : days < 7 ? d.toLocaleDateString('pl-PL', { weekday: 'short' }) + ' ' + t : d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric' }));
+}
 const cleanName = (name: string, controller?: string) => (controller ? name.replace(new RegExp('^' + controller.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'i'), '') : name).replace(/^station\s*/i, 'Strefa ');
 
 export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w, notify }) => {
@@ -47,6 +60,8 @@ export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = 
   const pr = useEntities(programs);
   const delay = useEntity(o.rainDelay);
   const conn = useEntity(o.connected);
+  const [mode, alarms, warns, rainS, fc] = useEntities([o.mode ?? '', o.alarms ?? '', o.warnings ?? '', o.rainSensor ?? '', o.forecast ?? '']);
+  const nAlarms = Number(alarms?.state) || 0, nWarns = Number(warns?.state) || 0;
   const [dur, setDur] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<Record<string, 'start' | 'stop'>>({});
   const [, tick] = useState(0);
@@ -56,7 +71,7 @@ export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = 
     const t = setTimeout(() => setBusy({}), 90_000); return () => clearTimeout(t);
   }, [busy]);
 
-  const def = Math.max(1, Math.min(30, Number(o.duration) || 10));
+  const def = Math.max(1, Math.min(100, Number(o.duration) || 10));
   const call = (service: string, data: Record<string, unknown>) => hass.call('rainbird_iq4', service, data).catch((e: Error) => { notify?.(e.message); setBusy({}); });
   const controllerName = conn?.attributes.friendly_name ? String(conn.attributes.friendly_name).replace(/\s*(connected|połączon\w*)$/i, '') : undefined;
   const title = w.title || controllerName || 'Nawadnianie';
@@ -70,6 +85,8 @@ export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = 
         <Icon name="mdi:sprinkler-variant" size={20} />
         <b>{title}</b>
         {conn && <span className={'ir-dot ' + (conn.state === 'on' ? 'ok' : 'bad')} title={conn.state === 'on' ? 'połączony z chmurą IQ4' : 'brak połączenia z chmurą IQ4'} />}
+        {nAlarms > 0 && <span className="ir-chip err" title="Nieodczytane alarmy sterownika (aplikacja Rain Bird IQ4)"><Icon name="mdi:alert" size={14} />{nAlarms}</span>}
+        {nWarns > 0 && <span className="ir-chip warn" title="Nieodczytane ostrzeżenia sterownika"><Icon name="mdi:alert-outline" size={14} />{nWarns}</span>}
         {running && o.controller !== '' && (
           <button className="ir-stopall" onClick={() => { call('stop_all_zones', o.connected ? { controller_entity: o.connected } : {}); }}>
             <Icon name="stop" size={16} /> Zatrzymaj wszystko
@@ -77,10 +94,12 @@ export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = 
         )}
       </div>
 
+      {mode?.state === 'off' && <div className="ir-off"><Icon name="mdi:power-off" size={16} /> Sterownik wyłączony (tryb Off) – programy nie ruszą. Włączysz go w aplikacji Rain Bird.</div>}
       {o.rainDelay && delay && (
         <div className={'ir-delay' + (days > 0 ? ' on' : '')}>
           <Icon name="mdi:weather-rainy" size={18} />
-          <span>{days > 0 ? `Opóźnienie deszczowe: ${days} ${days === 1 ? 'dzień' : 'dni'}` : 'Bez opóźnienia deszczowego'}</span>
+          <span>{days > 0 ? `Opóźnienie deszczowe: ${days} ${days === 1 ? 'dzień' : 'dni'}` : 'Bez opóźnienia deszczowego'}
+            {(rainS?.state === 'on' || fc?.state === 'on') && <small>{[rainS?.state === 'on' ? 'czujnik deszczu: mokro' : '', fc?.state === 'on' ? 'opóźnienie wg prognozy włączone' : ''].filter(Boolean).join(' · ')}</small>}</span>
           {o.delayButtons !== false && <div className="ir-delay-b">
             {[0, 1, 2, 3, 7].map((d) => (
               <button key={d} aria-pressed={days === d} onClick={() => call('set_rain_delay', { days: d, ...(o.connected ? { controller_entity: o.connected } : {}) })}>{d === 0 ? 'brak' : d + ' d'}</button>
@@ -102,13 +121,13 @@ export const IrrigationWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = 
             <div key={id} className={'ir-st' + (run ? ' run' : '') + (paused ? ' paused' : '') + (s.attributes.is_active === false ? ' inactive' : '')}>
               <span className="ir-term">{s.attributes.terminal ?? '–'}</span>
               <div className="ir-name"><b>{name}</b>
-                <small>{b === 'start' && !run ? 'uruchamiam…' : b === 'stop' && run ? 'zatrzymuję…' : run ? (left ? `podlewa · zostało ${left}` : 'podlewa') : STATE_PL[s.state] ?? s.state}</small>
+                <small>{b === 'start' && !run ? 'uruchamiam…' : b === 'stop' && run ? 'zatrzymuję…' : run ? (left ? `podlewa · zostało ${left}` : 'podlewa') : (s.state === 'idle' && lastRun(s.attributes.last_run)) || (STATE_PL[s.state] ?? s.state)}</small>
               </div>
               {!run && !paused && (
                 <div className="ir-dur">
                   <button onClick={() => setDur({ ...dur, [id]: Math.max(1, d - (d > 10 ? 5 : 1)) })} aria-label="Krócej">−</button>
                   <span>{d} min</span>
-                  <button onClick={() => setDur({ ...dur, [id]: Math.min(30, d + (d >= 10 ? 5 : 1)) })} aria-label="Dłużej">+</button>
+                  <button onClick={() => setDur({ ...dur, [id]: Math.min(100, d + (d >= 10 ? 5 : 1)) })} aria-label="Dłużej">+</button>
                 </div>
               )}
               {run || paused

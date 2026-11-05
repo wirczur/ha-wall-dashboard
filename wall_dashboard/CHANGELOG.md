@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.7
+- Nawadnianie **Rain Bird IQ4** (integracja Chapter-322/rainbird_iq4 1.8–1.10):
+  - czas strefy do **100 min** (wcześniej 30);
+  - liczba alarmów i ostrzeżeń sterownika w nagłówku, ostrzeżenie przy trybie sterownika „off”;
+  - czujnik deszczu („mokro”) i opóźnienie według prognozy przy opóźnieniu deszczowym;
+  - przy strefie godzina ostatniego podlewania;
+  - „Wykryj” uzupełnia nowe encje (strefy są od 1.8 osobnymi urządzeniami – wykrywanie działa jak wcześniej).
+
 ## 1.3.6
 - Robot koszący **Segway Navimow** (oficjalna integracja NavimowHA 1.1.x): bateria z atrybutu `battery` (bez osobnego czujnika), ikona zasięgu z `signal_strength`, opis błędu z atrybutu `error`.
 
