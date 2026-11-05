@@ -280,6 +280,7 @@ data:
 ## Dyson, AGD Samsung (LocalThings), Scheduler, Satel
 
 - **Oczyszczacz (Dyson)**: „Wykryj urządzenie Dyson” wypełnia encje z integracji hass-dyson.
+- **Robot sprzątający Dyson (hass-dyson 0.39+, Spot+Scrub / Vis Nav)**: w widgecie *Robot* przycisk „Wykryj urządzenie” uzupełnia też aktualny pokój (pokazywany przy stanie), stan stacji dokującej z godziną końca (np. „suszy mop do 10:55”), mapę pokrycia sprzątania (przycisk z mapą – podgląd odświeżany co 10 s w trakcie sprzątania), tryb sprzątania i listę pokoi. W kafelku (co najmniej 5 wierszy wysokości) zaznacz pokoje, wybierz tryb (odkurzanie / mop – Spot+Scrub) i „Sprzątaj wybrane” – add-on wywołuje `hass_dyson.start_zone_clean`. Pokój, w którym robot jest teraz, ma obwódkę. Dla Vis Nav pokoje wpisz ręcznie (nazwy z MyDyson).
 - **Urządzenie / AGD**: „Wybierz urządzenie” – dowolne urządzenie z HA (np. pralka z LocalThings); możesz usunąć zbędne encje i zmienić kolejność.
 - **Harmonogramy**: integracja scheduler-component; filtr po tagu lub urządzeniach.
 - **Alarm**: partycja Satel Integra (`alarm_control_panel.*`), strefy (`binary_sensor`), wyjścia (`switch`). Rozbrajanie z tabletu: Tablety → „Może rozbrajać alarm”.

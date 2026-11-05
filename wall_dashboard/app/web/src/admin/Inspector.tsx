@@ -185,14 +185,29 @@ export const WidgetInspector: FC<{
           const dc = (e: string) => hass.states.get(e)?.attributes.device_class;
           const battery = d.entities.find((e) => e.entity_id.startsWith('sensor.') && (dc(e.entity_id) === 'battery' || /battery|bateri/i.test(e.key + e.entity_id)))?.entity_id;
           const error = d.entities.find((e) => e.entity_id.startsWith('sensor.') && /error|bł[aą]d|fault/i.test(e.key + e.entity_id))?.entity_id;
-          const extras = d.entities.filter((e) => !e.category && ![main, battery, error].includes(e.entity_id) && /^(button|select|number|switch|sensor|binary_sensor|input_button)\./.test(e.entity_id)).map((e) => e.entity_id).slice(0, 12);
-          set({ entity: main, title: w.title || d.name, icon: w.icon || (main.startsWith('lawn_mower.') ? 'mdi:robot-mower' : 'mdi:robot-vacuum'), options: { ...o, battery, error, extras } });
+          // hass-dyson (Spot+Scrub, Vis Nav): current room, dock, clean coverage image, cleaning mode, rooms from the per-room selects
+          const byKey = (k: string) => d.entities.find((e) => e.key === k)?.entity_id;
+          const room = byKey('robot_current_room'), dock = byKey('robot_dock_state'), dockTimer = byKey('robot_dock_timer_end'), coverage = byKey('clean_coverage') ?? byKey('dust_map'), cleanMode = byKey('spot_scrub_cleaning_mode');
+          const rooms = d.entities.map((e) => { const m = /_room_(\d+)_cleaning_mode$/.exec(e.uid ?? ''); return m ? { id: m[1], name: (e.orig ?? e.name).replace(/\s*cleaning mode$/i, '').trim() } : null; })
+            .filter((x): x is { id: string; name: string } => !!x);
+          const own = [main, battery, error, room, dock, dockTimer, coverage, cleanMode];
+          const extras = d.entities.filter((e) => !e.category && !own.includes(e.entity_id) && /^(button|select|number|switch|sensor|binary_sensor|input_button)\./.test(e.entity_id)).map((e) => e.entity_id).slice(0, 12);
+          set({ entity: main, title: w.title || d.name, icon: w.icon || (main.startsWith('lawn_mower.') ? 'mdi:robot-mower' : 'mdi:robot-vacuum'),
+            options: clean({ ...o, battery, error, extras, room, dock, dockTimer, coverage, cleanMode, rooms: rooms.length ? rooms : o.rooms }) });
         }} />}
         {w.type === 'robot' && <>
           <EntityF label="Kosiarka / odkurzacz" value={w.entity} domains={['lawn_mower', 'vacuum']} onChange={(v) => set({ entity: v })} />
           <EntityF label="Bateria (sensor)" value={o.battery} domains={['sensor']} onChange={(v) => opt('battery', v)} hint="pusto = atrybut battery_level" />
           <EntityF label="Opis błędu (sensor, opcjonalnie)" value={o.error} domains={['sensor']} onChange={(v) => opt('error', v)} />
           <EntityListF label="Dodatkowe encje (przyciski pokoi, wysokość koszenia…)" value={o.extras} onChange={(v) => opt('extras', v)} hint="Widoczne, gdy kafelek ma co najmniej 5 wierszy wysokości" />
+          {(!w.entity || w.entity.startsWith('vacuum.')) && <>
+            <EntityF label="Aktualny pokój (sensor)" value={o.room} domains={['sensor']} onChange={(v) => opt('room', v)} hint="hass-dyson: „Current room” – pokazywany przy stanie" />
+            <EntityF label="Stacja dokująca (sensor)" value={o.dock} domains={['sensor']} onChange={(v) => opt('dock', v)} hint="np. suszenie mopa" />
+            <EntityF label="Koniec pracy stacji (sensor czasu)" value={o.dockTimer} domains={['sensor']} onChange={(v) => opt('dockTimer', v)} />
+            <EntityF label="Mapa / pokrycie sprzątania (image)" value={o.coverage} domains={['image', 'camera']} onChange={(v) => opt('coverage', v)} hint="Przycisk „Mapa” w kafelku" />
+            <EntityF label="Tryb sprzątania (select)" value={o.cleanMode} domains={['select']} onChange={(v) => opt('cleanMode', v)} hint="Spot+Scrub: odkurzanie / mop" />
+            <RoomsF value={o.rooms} onChange={(v) => opt('rooms', v)} />
+          </>}
           <p className="muted small">Kosiarki: domena lawn_mower (Segway Navimow, Husqvarna, Worx…). Odkurzacze: domena vacuum (Dyson 360 / Vis Nav przez hass-dyson, Roborock…).</p>
         </>}
         {w.type === 'device' && <DeviceDiscover label="Wybierz urządzenie" onPick={(d) => set({ title: w.title || d.name, options: { ...o, device: d.id, entities: d.entities.filter((e) => !e.category).map((e) => e.entity_id) } })} />}
@@ -716,6 +731,26 @@ const ViewMini: FC<{ view?: ViewDef }> = ({ view }) => {
   );
 };
 
+/** Rooms of a Dyson robot (hass_dyson.start_zone_clean takes their id or MyDyson name) */
+const RoomsF: FC<{ value?: { id: string; name: string }[]; onChange(v: { id: string; name: string }[] | undefined): void }> = ({ value = [], onChange }) => {
+  const set = (i: number, p: Partial<{ id: string; name: string }>) => onChange(value.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  return (
+    <div className="ins-row"><label>Pokoje</label>
+      <div className="ins-ctl">
+        {value.map((r, i) => (
+          <div key={i} className="row-btns">
+            <input style={{ width: 60 }} value={r.id} placeholder="id" onChange={(e) => set(i, { id: e.target.value })} aria-label="Id pokoju" />
+            <input style={{ flex: 1 }} value={r.name} placeholder="nazwa jak w MyDyson" onChange={(e) => set(i, { name: e.target.value })} aria-label="Nazwa pokoju" />
+            <button className="mini" onClick={() => { const n = value.filter((_, j) => j !== i); onChange(n.length ? n : undefined); }} aria-label={'Usuń ' + r.name}>×</button>
+          </div>
+        ))}
+        <button className="btn" onClick={() => onChange([...value, { id: '', name: '' }])}>+ Pokój</button>
+        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. W kafelku: wybierz pokoje → „Sprzątaj wybrane”.</small>
+      </div>
+    </div>
+  );
+};
+
 /** Calendars shown by a calendar widget: entity, colour, optional name. */
 const CalendarsF: FC<{ value?: { entity: string; color?: string; name?: string }[]; onChange(v: { entity: string; color?: string; name?: string }[] | undefined): void }> = ({ value = [], onChange }) => {
   const set = (i: number, p: Partial<{ entity: string; color?: string; name?: string }>) => onChange(value.map((c, j) => (j === i ? { ...c, ...p } : c)));
@@ -788,7 +823,7 @@ const IrrigationF: FC<{ o: Record<string, any>; set(p: Record<string, unknown>):
   );
 };
 
-interface DevInfo { id: string; name: string; model?: string; area?: string; integrations: string[]; entities: { entity_id: string; key: string; category?: string; name: string }[] }
+interface DevInfo { id: string; name: string; model?: string; area?: string; integrations: string[]; entities: { entity_id: string; key: string; uid?: string; orig?: string; category?: string; name: string }[] }
 /** Pick a device from the HA registry (optionally of one integration) – used by device-based widgets. */
 const DeviceDiscover: FC<{ integration?: string; label: string; filter?(d: DevInfo): boolean; onPick(d: DevInfo): void }> = ({ integration, label, filter, onPick }) => {
   const [list, setList] = useState<DevInfo[] | null>(null);

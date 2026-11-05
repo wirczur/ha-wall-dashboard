@@ -20,7 +20,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -634,6 +634,23 @@ api.get('/entities', asyncH(async (_req, res) => { res.json(await entityList());
 api.get('/camera/:entity', asyncH(async (req, res) => { await proxyCamera(req.params.entity, res); }));
 api.get('/calendar', asyncH(async (req, res) => { const q = calendarQuery(req); res.json(await calendarEvents(q.entities, q.start, q.end)); }));
 api.get('/media/:entity/art', asyncH(async (req, res) => { await proxyArt(req.params.entity, res); }));
+// ---------------------------------------------------------------- Dyson robot: clean chosen rooms (hass_dyson.start_zone_clean takes a device, not an entity)
+const ZONE_MODES = ['vacuum_only', 'vacuum_and_mop', 'mop_only', 'vacuum_then_mop'];
+async function robotZoneClean(entity, zonesIn, modeIn) {
+    if (!/^vacuum\.[a-z0-9_]+$/.test(entity))
+        throw Object.assign(new Error('To nie jest odkurzacz'), { status: 400 });
+    const zones = (Array.isArray(zonesIn) ? zonesIn : []).map((z) => String(z).slice(0, 60)).filter(Boolean).slice(0, 30);
+    if (!zones.length)
+        throw Object.assign(new Error('Wybierz co najmniej jeden pokój'), { status: 400 });
+    const client = requireHa();
+    const reg = (await client.registries()).entities.find((e) => e.entity_id === entity);
+    if (!reg?.device_id)
+        throw Object.assign(new Error('Nie znalazłem urządzenia tego odkurzacza w HA'), { status: 404 });
+    const mode = ZONE_MODES.includes(String(modeIn)) ? String(modeIn) : undefined;
+    await client.callService('hass_dyson', 'start_zone_clean', { device_id: reg.device_id, zones, ...(mode ? { cleaning_mode: mode } : {}) });
+    log.info(`Odkurzacz ${entity}: sprzątanie pokoi ${zones.join(', ')}${mode ? ' (' + mode + ')' : ''}`);
+}
+api.post('/robot/zone', asyncH(async (req, res) => { await robotZoneClean(String(req.body?.entity ?? ''), req.body?.zones, req.body?.mode); res.json({ ok: true }); }));
 api.get('/history-long/:entity', asyncH(async (req, res) => {
     res.json(await longHistory(req.params.entity, Math.min(120, Math.max(1, Number(req.query.days) || 60))));
 }));
@@ -806,6 +823,14 @@ kapi.get('/calendar', asyncH(async (req, res) => {
     if (q.entities.some((e) => !scope.entities.has(e)))
         return res.status(403).json({ error: 'Kalendarz nie należy do dashboardu tego tabletu' });
     res.json(await calendarEvents(q.entities, q.start, q.end));
+}));
+kapi.post('/robot/zone', express.json({ limit: '8kb' }), asyncH(async (req, res) => {
+    const { scope } = kioskAuth(req);
+    const entity = String(req.body?.entity ?? '');
+    if (!scope.entities.has(entity))
+        return res.status(403).json({ error: 'Ten odkurzacz nie należy do dashboardu tego tabletu' });
+    await robotZoneClean(entity, req.body?.zones, req.body?.mode);
+    res.json({ ok: true });
 }));
 kapi.get('/media/:entity/art', asyncH(async (req, res) => {
     const { scope } = kioskAuth(req);
@@ -2212,7 +2237,7 @@ api.get('/devices', asyncH(async (req, res) => {
     res.json(devices.filter((d) => byDev.has(d.id)).map((d) => ({
         id: d.id, name: d.name_by_user || d.name || d.model || d.id, model: d.model, manufacturer: d.manufacturer, area: areaName.get(d.area_id) || undefined,
         integrations: [...new Set(byDev.get(d.id).map((e) => e.platform))],
-        entities: byDev.get(d.id).map((e) => ({ entity_id: e.entity_id, key: e.translation_key || e.original_name || '', platform: e.platform, category: e.entity_category || undefined, name: client.states.get(e.entity_id)?.attributes.friendly_name ?? e.original_name ?? e.entity_id }))
+        entities: byDev.get(d.id).map((e) => ({ entity_id: e.entity_id, key: e.translation_key || e.original_name || '', uid: e.unique_id || undefined, orig: e.original_name || undefined, platform: e.platform, category: e.entity_category || undefined, name: client.states.get(e.entity_id)?.attributes.friendly_name ?? e.original_name ?? e.entity_id }))
     })).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pl')));
 }));
 api.get('/integration-entities', asyncH(async (req, res) => {

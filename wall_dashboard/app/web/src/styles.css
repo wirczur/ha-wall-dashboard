@@ -1444,3 +1444,17 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 .e-occ { min-height: 38px; max-width: 170px; border-radius: 12px; border: 1px solid var(--surface-3); background: var(--surface-2); padding: 0 10px; font-weight: 600; }
 .e-head .db-menu { top: 46px; min-width: 220px; }
 .e-head .db-menu button { display: flex; align-items: center; }
+
+/* robot: Dyson Spot+Scrub / Vis Nav – dock, rooms, coverage map */
+.rb-dock { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-rooms { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+.rb-room-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.rb-room-list button { min-height: 36px; padding: 0 13px; border-radius: 18px; border: 1px solid var(--line); background: transparent; color: var(--fg); font-weight: 600; font-size: 13px; }
+.rb-room-list button.here { border-color: var(--accent); }
+.rb-room-list button[aria-pressed="true"] { background: var(--on-bg); color: var(--on-ink); border-color: transparent; }
+.rb-mode { min-height: 40px; border-radius: 12px; border: 1px solid var(--line); background: rgba(var(--ink), .05); color: var(--fg); padding: 0 10px; font-weight: 600; }
+.rb-map { position: fixed; inset: 0; z-index: 400; background: rgba(0, 0, 0, .6); display: grid; place-items: center; padding: 20px; }
+.rb-map-box { max-width: min(900px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px; background: var(--surface, #15181e); color: var(--fg); }
+.rb-map-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rb-map-box img { max-width: 100%; max-height: calc(100vh - 140px); object-fit: contain; border-radius: 12px; background: #fff; }
+.rb-map-box small { color: var(--muted); text-align: center; }

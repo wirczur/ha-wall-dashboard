@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3
+- **Robot Dyson (hass-dyson 0.39, Spot+Scrub / Vis Nav)** w widgecie *Robot*:
+  - aktualny pokój przy stanie, stan stacji dokującej z godziną końca;
+  - mapa pokrycia sprzątania w okienku (odświeżana w trakcie sprzątania);
+  - sprzątanie wybranych pokoi z wyborem trybu (odkurzanie / mop), przez `hass_dyson.start_zone_clean`;
+  - „Wykryj urządzenie” uzupełnia nowe encje i pokoje automatycznie.
+
 ## 1.3.2
 - *Sceny i automatyzacje* pokazują tylko sceny i automatyzacje utworzone w Wall Dashboard (pozostałe z HA są pomijane). Automatyzacja telewizora sceny nie jest pokazywana osobno – scena ma dopisek „+ telewizor”.
 
