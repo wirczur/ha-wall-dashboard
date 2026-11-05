@@ -23,7 +23,7 @@ const DOCK_PL: Record<string, string> = { drying_mop: 'suszy mop', drying: 'susz
 const dockPl = (v: string) => DOCK_PL[v.toLowerCase()] ?? v.toLowerCase().replace(/_/g, ' ');
 const MODES: [string, string][] = [['', 'Tryb: jak w ustawieniach pokoju'], ['vacuum_only', 'Odkurzanie'], ['vacuum_and_mop', 'Odkurz. + mop'], ['mop_only', 'Tylko mop'], ['vacuum_then_mop', 'Najpierw odkurz., potem mop']];
 /** per-room settings of hass-dyson (Spot+Scrub): select entities, options as the integration names them */
-type Room = { id: string; name: string; mode?: string; power?: string; water?: string; wash?: string };
+type Room = { id: string; name: string; /** shown instead of the MyDyson name */ label?: string; mode?: string; power?: string; water?: string; wash?: string };
 const ROOM_SET: [keyof Room, string, Record<string, string>][] = [
   ['mode', 'Tryb', { vacuum_only: 'Odkurzanie', vacuum_and_mop: 'Odkurzanie + mop', mop_only: 'Tylko mop', vacuum_then_mop: 'Najpierw odkurzanie, potem mop' }],
   ['power', 'Moc', { auto: 'Auto', boost: 'Boost', quiet: 'Cicho', quick: 'Szybko' }],
@@ -31,6 +31,15 @@ const ROOM_SET: [keyof Room, string, Record<string, string>][] = [
   ['wash', 'Mycie mopa', { '1x': '1 raz', '2x': '2 razy' }]
 ];
 const MODE_SHORT: Record<string, string> = { vacuum_only: 'odkurzanie', vacuum_and_mop: 'odkurz. + mop', mop_only: 'mop', vacuum_then_mop: 'odkurz. → mop' };
+/** icons of a cleaning mode: vacuum and / or mop */
+const ModeIcons: FC<{ m?: string }> = ({ m }) => !m || !MODE_SHORT[m] ? null : (
+  <span className="rb-mi" title={MODE_SHORT[m]}>
+    {m !== 'mop_only' && <Icon name="mdi:vacuum-outline" size={14} />}
+    {m === 'vacuum_then_mop' && <i>→</i>}
+    {m !== 'vacuum_only' && <Icon name="mdi:water-outline" size={14} />}
+    <small>{MODE_SHORT[m]}</small>
+  </span>
+);
 const valid = (x?: HassState) => !!x && !['unknown', 'unavailable', 'none', ''].includes(String(x.state).toLowerCase());
 const hhmm = (iso: string) => { const d = new Date(iso); return isNaN(+d) || d.getTime() < Date.now() ? '' : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); };
 const statusPl = (v: unknown) => { const t = String(v ?? '').trim(); return STATUS_PL[t.toLowerCase().replace(/_/g, ' ')] ?? t; };
@@ -93,6 +102,8 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
 
   return (
     <div className={'rb rb-' + st + (active ? ' rb-active' : '') + (w.h <= 3 ? ' rb-compact' : '')} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+     <div className="rb-grid">
+      <div className="rb-main">
       <div className="rb-head">
         <div className="rb-ico" aria-hidden><Icon name={icon} size={30} />{active && <i className="rb-pulse" />}</div>
         <div className="rb-title">
@@ -124,21 +135,33 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
           {fanList.map((x) => <button key={x} aria-pressed={a.fan_speed === x} onClick={() => call('set_fan_speed', { fan_speed: x })}>{x}</button>)}
         </div>
       )}
+      </div>
 
       {!mower && rooms.length > 0 && w.h > 4 && (
         <div className="rb-rooms">
-          <div className="rb-room-list" role="group" aria-label="Pokoje">
-            {rooms.map((r, i) => { const k = r.id || r.name; const on = pick.includes(k); const m = roomModes[i]?.state; return (
-              <button key={k} aria-pressed={on} className={roomName && r.name === roomName ? 'here' : ''} onClick={() => setPick(on ? pick.filter((x) => x !== k) : [...pick, k])}>
-                {r.name || 'pokój ' + r.id}{m && MODE_SHORT[m] ? <small> · {MODE_SHORT[m]}</small> : null}</button>); })}
-            {rooms.some((r) => r.mode || r.power || r.water || r.wash) && <button className="rb-cfg" onClick={() => setRoomCfg(true)} aria-label="Ustawienia pokoi" title="Ustawienia pokoi: tryb, moc, woda, mycie"><Icon name="mdi:cog-outline" size={18} /></button>}
+          <div className="rb-rooms-h">
+            <b>Pokoje</b>
+            <small>{pick.length ? `wybrano ${pick.length}` : 'dotknij, aby wybrać'}</small>
+            <span className="grow" />
+            <button className="rb-lnk" onClick={() => setPick(pick.length === rooms.length ? [] : rooms.map((r) => r.id || r.name))}>{pick.length === rooms.length ? 'Żaden' : 'Wszystkie'}</button>
+            {rooms.some((r) => r.mode || r.power || r.water || r.wash) && <button className="rb-cfg" onClick={() => setRoomCfg(true)} aria-label="Ustawienia pokoi" title="Ustawienia pokoi: tryb, moc, woda, mycie"><Icon name="mdi:tune-variant" size={18} /></button>}
           </div>
-          {pick.length > 0 && <>
+          <div className="rb-room-list" role="group" aria-label="Pokoje">
+            {rooms.map((r, i) => { const k = r.id || r.name; const on = pick.includes(k); const here = !!roomName && r.name === roomName; return (
+              <button key={k} aria-pressed={on} className={here ? 'here' : ''} onClick={() => setPick(on ? pick.filter((x) => x !== k) : [...pick, k])}>
+                <span className="rb-rn">{r.label || r.name || 'pokój ' + r.id}</span>
+                <ModeIcons m={roomModes[i]?.state} />
+                {here && <i className="rb-here" title="Robot jest w tym pokoju" />}
+                {on && <span className="rb-ck"><Icon name="mdi:check-circle" size={16} /></span>}
+              </button>); })}
+          </div>
+          {pick.length > 0 && <div className="rb-go">
             <select className="rb-mode" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Tryb sprzątania">{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <button className="rb-b primary" onClick={cleanRooms} disabled={active}><Icon name="mdi:broom" size={18} />Sprzątaj wybrane ({pick.length})</button>
-          </>}
+            <button className="rb-b primary" onClick={cleanRooms} disabled={active}><Icon name="mdi:broom" size={18} />Sprzątaj ({pick.length})</button>
+          </div>}
         </div>
       )}
+     </div>
 
       {extras.length > 0 && w.h > 4 && (
         <div className="rb-rows">{extras.map((e) => {
@@ -166,7 +189,7 @@ const RoomSettings: FC<{ rooms: Room[]; busy: boolean; title: string; onClose():
         <div className="rb-rcfg-list">
           {rooms.map((r, ri) => (
             <div key={r.id || r.name} className="rb-rcfg-row">
-              <b>{r.name}</b>
+              <b>{r.label || r.name}</b>
               {ROOM_SET.map(([k, label, opts], si) => {
                 const ent = r[k] as string | undefined; if (!ent) return null;
                 const x = st[ri * ROOM_SET.length + si];

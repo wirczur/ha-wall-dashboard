@@ -742,21 +742,22 @@ const ViewMini: FC<{ view?: ViewDef }> = ({ view }) => {
 };
 
 /** Rooms of a Dyson robot (hass_dyson.start_zone_clean takes their id or MyDyson name) */
-const RoomsF: FC<{ value?: { id: string; name: string; mode?: string }[]; onChange(v: { id: string; name: string; mode?: string }[] | undefined): void }> = ({ value = [], onChange }) => {
-  const set = (i: number, p: Partial<{ id: string; name: string }>) => onChange(value.map((r, j) => (j === i ? { ...r, ...p } : r)));
+const RoomsF: FC<{ value?: { id: string; name: string; label?: string; mode?: string }[]; onChange(v: { id: string; name: string; label?: string; mode?: string }[] | undefined): void }> = ({ value = [], onChange }) => {
+  const set = (i: number, p: Partial<{ id: string; name: string; label?: string }>) => onChange(value.map((r, j) => (j === i ? { ...r, ...p } : r)));
   return (
     <div className="ins-row"><label>Pokoje</label>
       <div className="ins-ctl">
         {value.map((r, i) => (
           <div key={i} className="row-btns">
             <input style={{ width: 60 }} value={r.id} placeholder="id" onChange={(e) => set(i, { id: e.target.value })} aria-label="Id pokoju" />
-            <input style={{ flex: 1 }} value={r.name} placeholder="nazwa jak w MyDyson" onChange={(e) => set(i, { name: e.target.value })} aria-label="Nazwa pokoju" />
+            <input style={{ flex: 1 }} value={r.name} placeholder="nazwa jak w MyDyson" onChange={(e) => set(i, { name: e.target.value })} aria-label="Nazwa pokoju w MyDyson" title="Nazwa w MyDyson – po niej robot rozpoznaje pokój" />
+            <input style={{ flex: 1 }} value={r.label ?? ''} placeholder="wyświetlana (opcjonalnie)" onChange={(e) => set(i, { label: e.target.value || undefined })} aria-label="Nazwa wyświetlana" />
             {r.mode && <small className="muted" title="Ustawienia pokoju z hass-dyson (tryb, moc, woda, mycie)">⚙</small>}
             <button className="mini" onClick={() => { const n = value.filter((_, j) => j !== i); onChange(n.length ? n : undefined); }} aria-label={'Usuń ' + r.name}>×</button>
           </div>
         ))}
         <button className="btn" onClick={() => onChange([...value, { id: '', name: '' }])}>+ Pokój</button>
-        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub) razem z ich ustawieniami (⚙ – tryb, moc, woda, mycie; w kafelku przycisk z zębatką). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. W kafelku: wybierz pokoje → „Sprzątaj wybrane”.</small>
+        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub) razem z ich ustawieniami (⚙ – tryb, moc, woda, mycie; w kafelku przycisk z zębatką). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. Druga kolumna to nazwa w kafelku (np. „Salon” zamiast „Living room2”) – pierwsza musi zostać jak w MyDyson. W kafelku: wybierz pokoje → „Sprzątaj”.</small>
       </div>
     </div>
   );

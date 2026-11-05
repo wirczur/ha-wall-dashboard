@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.5
+- Widget robota – nowy wygląd pokoi: siatka kafelków z nazwą i ikonami trybu (odkurzanie / mop), znacznik pokoju, w którym jest robot, „Wszystkie / Żaden”, ustawienia pokoi w nagłówku. Szeroki kafelek: sterowanie po lewej, pokoje po prawej; przyciski nie rozciągają się na całą szerokość.
+- Pokoje mogą mieć **nazwę wyświetlaną** (np. „Salon” zamiast „Living room2”) – nazwa z MyDyson zostaje do sterowania robotem.
+
 ## 1.3.4
 - Robot Dyson Spot+Scrub: **ustawienia pokoi** z kafelka (przycisk z zębatką) – tryb (odkurzanie / odkurzanie + mop / tylko mop / najpierw odkurzanie, potem mop), moc, ilość wody, mycie mopa; przy pokojach widać ich tryb. Wybór trybu przy „Sprzątaj wybrane” jest zawsze widoczny (wcześniej tylko z encją „Tryb sprzątania”).
 - „Wykryj urządzenie” zbiera wszystkie ustawienia pokoi z hass-dyson.
