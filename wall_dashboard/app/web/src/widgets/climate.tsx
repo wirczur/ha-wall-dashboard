@@ -9,6 +9,7 @@ import { hass, useEntities } from '../lib/hass';
 import { domainOf, formatNumber, friendly } from '../lib/format';
 import type { ActionCtx } from '../lib/actions';
 import { Icon } from '../ui/Icon';
+import { GrentonScheduleButton } from './grentonSchedule';
 import { renderTemplate } from '../lib/template';
 
 // ---------------------------------------------------------------- roles
@@ -375,6 +376,8 @@ export const ClimateWidget: FC<{ w: WidgetDef; ctx?: ActionCtx; forceLayout?: La
   const nextVisible = c.next && (o.showNext ?? 'schedule') !== 'never' && ((o.showNext ?? 'schedule') === 'always' || c.schedule);
   const targetLabel = c.off ? 'Wyłączony' : c.schedule ? (o.scheduleBehavior === 'override' && c.pending ? 'Tymczasowo' : 'Wg harmonogramu') : (o.targetLabel || 'Nastawa');
   const modeCtl = o.modeControl ?? 'auto';
+  const gsEntity = o.grentonSchedule === false ? undefined : (w.entity || c.roles.target?.entity);
+  const gs = (compact?: boolean) => <GrentonScheduleButton entity={gsEntity} title={c.title} compact={compact} notify={(m) => ctx?.notify?.(m)} />;
 
   const stepper = (big?: boolean) => (
     <div className={'cl-step' + (big ? ' big' : '')}>
@@ -452,7 +455,7 @@ export const ClimateWidget: FC<{ w: WidgetDef; ctx?: ActionCtx; forceLayout?: La
           {stepper()}
         </div>
         <div className="cl-row">
-          <span className="cl-row gap">{modeCycle()}
+          <span className="cl-row gap">{modeCycle()}{gs(true)}
             {c.kind === 'ac' && o.showFan !== false && c.fanModes.length > 0 && (
               <button className="cl-cyc" onClick={() => c.cycle(c.fanModes, c.fan, 'fan')} aria-label="Wentylator. Zmień"><Icon name="fan" size={18} /><span>{c.fanModes.find((m) => m.value === c.fan)?.label ?? c.fan ?? '—'}</span></button>
             )}

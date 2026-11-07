@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.9
+- **Harmonogram termostatu Grenton** (integracja wirczur/homeassistant-grenton 0.3+): widget *Klimat* z encją Grenton ma przycisk „Harmonogram” – podgląd tygodnia jako kolorowe paski, edycja godzin (co 15 min) i temperatur (co 0,5°), dodawanie / usuwanie zmian, kopiowanie dnia na dni robocze / weekend / cały tydzień. Zapis wywołuje `grenton.set_thermostat_schedule` (cały tydzień). Działa też z tabletu – z kiosku dozwolona jest tylko ta jedna usługa Grentona i tylko dla termostatu z dashboardu. Przycisk można ukryć w ustawieniach widgetu.
+
 ## 1.3.8
 - Widget robota ma własny margines wewnętrzny – przy małym „Marginesie wewn.” kafelka ikona, przyciski i pokoje nie dotykają już krawędzi.
 

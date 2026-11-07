@@ -120,6 +120,8 @@ export interface ClimateOptions {
   showPower?: boolean; showHumidity?: boolean; showExtras?: boolean; showAction?: boolean; showIdle?: boolean;
   showFan?: boolean; showSwing?: boolean; showPreset?: boolean;
   showNext?: 'schedule' | 'always' | 'never';
+  /** Grenton thermostat (weekly_schedule attribute): "Harmonogram" button with the week editor; false hides it */
+  grentonSchedule?: boolean;
   targetLabel?: string;
   /** tap on the small layout */
   smallTap?: 'panel' | 'cycle' | 'power' | 'none';

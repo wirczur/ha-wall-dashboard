@@ -1499,3 +1499,33 @@ html[data-lite="1"] .grid.slide-next, html[data-lite="1"] .grid.slide-prev { ani
 .ir-chip.warn { background: rgba(242, 196, 107, .2); color: #B07A12; }
 .ir-off { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 7px 10px; border-radius: 10px; background: rgba(229, 72, 77, .1); color: var(--err); }
 .ir-delay span small { display: block; font-size: 11px; color: var(--muted); }
+
+/* Grenton thermostat: weekly schedule editor */
+.cl-next { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.gs-btn { min-height: 34px; }
+.rb-map-box.gs { width: min(760px, 100%); overflow-y: auto; gap: 14px; }
+.gs-week { display: flex; flex-direction: column; gap: 4px; }
+.gs-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 8px; border: 0; background: transparent; color: inherit; padding: 3px 6px; border-radius: 10px; text-align: left; }
+.gs-row[aria-selected="true"] { background: rgba(var(--ink), .08); outline: 1px solid var(--line); }
+.gs-row b { font-size: 13px; }
+.gs-bar { position: relative; height: 26px; border-radius: 8px; overflow: hidden; background: rgba(var(--ink), .06); }
+.gs-bar i { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid rgba(255, 255, 255, .5); }
+.gs-bar i span { font-size: 11px; font-weight: 700; font-style: normal; color: #14202c; white-space: nowrap; }
+.gs-hours { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 0 6px; }
+.gs-hours div { position: relative; height: 14px; }
+.gs-hours span { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--muted); }
+.gs-hours span:first-child { transform: none; } .gs-hours span:last-child { transform: translateX(-100%); }
+.gs-day { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(var(--ink), .04); }
+.gs-day-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gs-day-h small { color: var(--muted); }
+.gs-lnk { border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 600; }
+.gs-p { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.gs-sw { width: 10px; height: 30px; border-radius: 4px; flex: none; }
+.gs-time { min-height: 40px; min-width: 84px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface, #15181e); color: var(--fg); font-weight: 700; font-size: 15px; padding: 0 8px; display: inline-flex; align-items: center; }
+span.gs-time { border-color: transparent; background: transparent; }
+.gs-t { min-width: 56px; text-align: center; font-size: 18px; }
+.gs-del { width: 34px; height: 34px; border-radius: 50%; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; }
+.gs-del:disabled { visibility: hidden; }
+.gs-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--line); background: transparent; color: var(--fg); border-radius: 12px; padding: 8px 12px; font-weight: 600; }
+.gs-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gs-err { color: var(--err); margin: 0; }

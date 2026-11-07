@@ -6,7 +6,9 @@ const KIOSK_DOMAINS = new Set([
     'scene', 'script', 'button', 'input_button', 'input_number', 'input_select', 'select', 'number', 'input_text', 'text', 'input_datetime',
     'vacuum', 'valve', 'humidifier', 'water_heater', 'siren', 'alarm_control_panel', 'lawn_mower',
     // custom integrations with their own widgets: Simple Timer, Rain Bird IQ4
-    'simple_timer', 'rainbird_iq4', 'scheduler'
+    'simple_timer', 'rainbird_iq4', 'scheduler',
+    // Grenton: only the thermostat week (see checkKioskCall)
+    'grenton'
 ]);
 /** Collects every entity id referenced anywhere in a dashboard (widgets, panels, actions). */
 export function entitiesOf(doc) {
@@ -123,6 +125,8 @@ export function kioskScope(store, tablet) {
 export function checkKioskCall(call, allowed, opts = {}) {
     if (!KIOSK_DOMAINS.has(call.domain))
         throw new Error(`Usługa ${call.domain}.${call.service} nie jest dostępna z kiosku`);
+    if (call.domain === 'grenton' && call.service !== 'set_thermostat_schedule')
+        throw new Error(`Usługa grenton.${call.service} nie jest dostępna z kiosku`);
     if (call.domain === 'alarm_control_panel' && /disarm/.test(call.service) && !opts.allowDisarm)
         throw new Error('Rozbrajanie alarmu z tego tabletu jest wyłączone (Tablety → „Może rozbrajać alarm”)');
     const ids = new Set();

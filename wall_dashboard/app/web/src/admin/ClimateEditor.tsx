@@ -113,6 +113,8 @@ export const ClimateEditor: FC<{
       options={[['auto', 'Automatycznie (duży: przyciski, mniejsze: przełącznik)'], ['buttons', 'Przyciski'], ['cycle', 'Jeden przycisk – kolejny tryb'], ['hidden', 'Ukryj']]} />
     <SelectF label="Przycisk zasilania" value={tri(o.showPower)} onChange={(v) => set({ showPower: fromTri(v) })}
       options={[['', kind === 'ac' ? 'automatycznie (klima: tak)' : 'automatycznie (termostat: nie)'], ['1', 'Pokaż'], ['0', 'Ukryj']]} />
+    {!!(entity && hass.states.get(entity)?.attributes.weekly_schedule) && (
+      <CheckF label="Grenton: przycisk „Harmonogram” (edycja tygodnia, także z tabletu)" value={o.grentonSchedule !== false} onChange={(v) => set({ grentonSchedule: v ? undefined : false })} />)}
     <SelectF label="Następny punkt" value={o.showNext ?? 'schedule'} onChange={(v) => set({ showNext: v === 'schedule' ? undefined : v as Opt['showNext'] })}
       options={[['schedule', 'Tylko w harmonogramie'], ['always', 'Zawsze'], ['never', 'Nigdy']]} />
     <CheckF label="Ikony trybów" value={o.modeIcons !== false} onChange={(v) => set({ modeIcons: v ? undefined : false })} />
