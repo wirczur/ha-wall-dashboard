@@ -134,6 +134,12 @@ export class HaClient extends EventEmitter {
     return id;
   }
 
+  /** a subscription HA ends by itself (assist_pipeline/run): forget it locally */
+  dropSub(id: number) { this.subs.delete(id); }
+
+  /** binary frame (Assist audio: handler id byte + PCM) */
+  sendBinary(buf: Buffer) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(buf); }
+
   async unsubscribe(id: number) {
     if (!this.subs.delete(id)) return;
     try { await this.cmd({ type: 'unsubscribe_events', subscription: id }); } catch { /* already gone */ }

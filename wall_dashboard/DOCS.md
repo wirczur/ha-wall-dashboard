@@ -259,6 +259,16 @@ Zakładka **Wyzwalacze**: wskaż encję (np. `binary_sensor.dzwonek`, `event.dom
 
 Wybudzanie w **Fully Kiosk Browser**: *Settings → Advanced Web Settings → Enable JavaScript Interface* (oraz w *Device Management* zezwól na wyłączanie wygaszacza/ekranu). Add-on wywołuje `fully.turnScreenOn()`, `fully.stopScreensaver()`, `fully.bringToForeground()`, opcjonalnie `setScreenBrightness`, `playSound`, `textToSpeech`.
 
+## Asystent (Assist)
+
+**Tablety → wybrany tablet → Asystent → „Asystent na tym tablecie”.** Na panelu pojawia się okrągły przycisk w prawym dolnym rogu: okno rozmowy, podpowiedzi (własne wpiszesz w ustawieniach), pole tekstowe i mikrofon.
+
+- **Potok Assist** – wybierasz jeden z potoków HA (Ustawienia → Asystenci głosowi): agent rozmowy (wbudowany, Ollama, OpenAI…), rozpoznawanie mowy (np. Whisper), głos (np. Piper) i słowo wybudzające (openWakeWord). Puste = domyślny potok HA.
+- **Głos:** *tylko tekst*, *przytrzymaj mikrofon i mów* albo *słowo wybudzające* – panel wysyła dźwięk z mikrofonu do HA cały czas (ok. 32 kB/s, 16 kHz), po wykryciu słowa okno otwiera się samo i zamyka po odpowiedzi. Słuchanie wstrzymuje się podczas rozmów (SIP, interkom), gdy aplikacja jest w tle i – jeśli nie zaznaczysz inaczej – w trybie ciszy.
+- **Odpowiadaj głosem** – odpowiedź z TTS potoku (w trybie ciszy tylko tekst).
+- Mikrofon w przeglądarce wymaga **HTTPS** kiosku (jak interkom).
+- Asystent steruje encjami **udostępnionymi dla Assist** w HA (Ustawienia → Asystenci głosowi → Udostępnianie) – nie tylko tymi z dashboardu tabletu. Udostępniaj tylko to, czym asystent ma sterować z paneli.
+
 ## Sceny i automatyzacje
 
 Zakładka **Sceny i automatyzacje** zapisuje bezpośrednio w HA (`scenes.yaml`, `automations.yaml` – standardowa konfiguracja HA je dołącza). Po zapisie add-on przeładowuje sceny/automatyzacje.

@@ -82,6 +82,7 @@ Pełna instrukcja jest w zakładce **Dokumentacja** dodatku ([wall_dashboard/DOC
 - **Dzwonek z furtki**, do wyboru:
   - **po staremu:** wyzwalacz z HA, obraz i rozmowa przez go2rtc, poczekalnia z muzyką i automatycznym rozłączaniem;
   - **przez centralę SIP (VitalPBX / Asterisk):** panele i telefony są numerami wewnętrznymi, centrala obsługuje IVR i grupę dzwonienia, telefon dostaje powiadomienie push z aplikacji HA i przejmuje połączenie.
+- **Asystent głosowy** (Assist z HA: czat, przytrzymaj i mów, słowo wybudzające; agent np. Ollama) – osobno dla każdego tabletu.
 - **Interkom między panelami** (WebRTC w sieci lokalnej), tryb ciszy z harmonogramem, osobna głośność rozmów i powiadomień.
 - **Telefony i iPady:** ten sam dashboard jako aplikacja z ekranu początkowego (PWA), poza domem przez VPN.
 - **Bezpieczeństwo:**

@@ -10,6 +10,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ENTITY_RE } from '../shared/types.js';
 import { HaClient, TV_EVENT } from './ha.js';
+import { AssistSession } from './assist.js';
 import { log } from './log.js';
 import { checkKioskCall, entitiesOf, kioskScope, popupTriggersOf, streamName, streamsOf } from './permissions.js';
 import { emptyDashboard } from './seed.js';
@@ -20,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.3.9';
+const VERSION = '1.4.0';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -498,6 +499,8 @@ api.put('/tablets/:id', (req, res) => {
         t.intercomAuto = ['on', 'listen'].includes(req.body.intercomAuto) ? req.body.intercomAuto : undefined;
     if ('intercomAutoDelay' in (req.body ?? {}))
         t.intercomAutoDelay = isFinite(req.body.intercomAutoDelay) && req.body.intercomAutoDelay !== null ? Math.max(0, Math.min(30, Number(req.body.intercomAutoDelay))) : undefined;
+    if ('assist' in (req.body ?? {}))
+        t.assist = cleanAssist(req.body.assist);
     for (const k of ['intercomRing', 'intercomHold'])
         if (k in (req.body ?? {}))
             t[k] = typeof req.body[k] === 'string' && req.body[k].trim() ? String(req.body[k]).trim().slice(0, 500) : undefined;
@@ -634,6 +637,22 @@ api.get('/entities', asyncH(async (_req, res) => { res.json(await entityList());
 api.get('/camera/:entity', asyncH(async (req, res) => { await proxyCamera(req.params.entity, res); }));
 api.get('/calendar', asyncH(async (req, res) => { const q = calendarQuery(req); res.json(await calendarEvents(q.entities, q.start, q.end)); }));
 api.get('/media/:entity/art', asyncH(async (req, res) => { await proxyArt(req.params.entity, res); }));
+// ---------------------------------------------------------------- Assist: pipelines (admin), spoken answers (TTS) for the tablets
+api.get('/assist/pipelines', asyncH(async (_req, res) => {
+    const r = await requireHa().cmd({ type: 'assist_pipeline/pipeline/list' });
+    res.json({ preferred: r.preferred_pipeline, pipelines: (r.pipelines ?? []).map((p) => ({ id: p.id, name: p.name, language: p.language, agent: p.conversation_engine, stt: p.stt_engine, tts: p.tts_engine, wake: p.wake_word_entity })) });
+}));
+async function proxyTts(file, res) {
+    if (!/^[\w.-]+\.(mp3|wav|ogg|flac|opus)$/.test(file))
+        return res.status(400).end();
+    const r = await requireHa().rest('/tts_proxy/' + file);
+    if (!r.ok || !r.body)
+        return res.status(r.status || 502).end();
+    res.setHeader('Content-Type', r.headers.get('content-type') ?? 'audio/mpeg');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.end(Buffer.from(await r.arrayBuffer()));
+}
+api.get('/assist/tts/:file', asyncH(async (req, res) => { await proxyTts(req.params.file, res); }));
 // ---------------------------------------------------------------- Dyson robot: clean chosen rooms (hass_dyson.start_zone_clean takes a device, not an entity)
 const ZONE_MODES = ['vacuum_only', 'vacuum_and_mop', 'mop_only', 'vacuum_then_mop'];
 async function robotZoneClean(entity, zonesIn, modeIn) {
@@ -800,7 +819,8 @@ kapi.get('/pair/poll', (req, res) => {
 kapi.get('/kiosk', (req, res) => {
     const { tablet, scope } = kioskAuth(req);
     res.json({
-        tablet: { id: tablet.id, name: tablet.name, notifyVolume: tablet.notifyVolume, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold } },
+        tablet: { id: tablet.id, name: tablet.name, notifyVolume: tablet.notifyVolume, lite: !!tablet.lite, layout: tablet.layout, screen: tablet.screen, appPin: tablet.appPin, intercom: tablet.intercom !== false, intercomCfg: { volume: tablet.intercomVolume, lite: !!tablet.lite, audio: tablet.intercomAudio, codec: tablet.intercomCodec ?? (tablet.lite && tablet.intercomLiteCodec ? 'g722' : undefined), dnd: !!tablet.quiet?.intercomSilent, auto: tablet.intercomAuto, autoDelay: tablet.intercomAutoDelay, ring: tablet.intercomRing, hold: tablet.intercomHold },
+            assist: tablet.assist?.enabled ? { enabled: true, voice: tablet.assist.voice ?? 'ptt', tts: !!tablet.assist.tts, wakeInQuiet: !!tablet.assist.wakeInQuiet, hints: tablet.assist.hints } : undefined },
         sip: sipFor(tablet),
         themes: (store.data.themes ?? []).filter((th) => scope.dashboards.some((id) => store.get(id)?.theme.custom === th.id)),
         dashboards: scope.dashboards.map((id) => store.get(id)),
@@ -823,6 +843,12 @@ kapi.get('/calendar', asyncH(async (req, res) => {
     if (q.entities.some((e) => !scope.entities.has(e)))
         return res.status(403).json({ error: 'Kalendarz nie należy do dashboardu tego tabletu' });
     res.json(await calendarEvents(q.entities, q.start, q.end));
+}));
+kapi.get('/assist/tts/:file', asyncH(async (req, res) => {
+    const { tablet } = kioskAuth(req);
+    if (!tablet.assist?.enabled)
+        return res.status(403).end();
+    await proxyTts(req.params.file, res);
 }));
 kapi.post('/robot/zone', express.json({ limit: '8kb' }), asyncH(async (req, res) => {
     const { scope } = kioskAuth(req);
@@ -1054,9 +1080,16 @@ function attachWs(server, mode) {
                     send(c, { type: 'quiet', state: quietState(tq) });
             }
             send(c, { type: 'states', states: visibleStates(c) });
-            ws.on('message', (raw) => onClientMessage(c, raw.toString()));
+            ws.on('message', (raw, isBinary) => {
+                if (isBinary) {
+                    c.assist?.audio(Buffer.isBuffer(raw) ? raw : Buffer.from(raw));
+                    return;
+                }
+                onClientMessage(c, raw.toString());
+            });
             ws.on('close', () => {
                 clients.delete(c);
+                c.assist?.close();
                 if (c.tabletId)
                     seenGone(c.tabletId);
                 intercomGone(c);
@@ -1067,6 +1100,39 @@ function attachWs(server, mode) {
     });
 }
 const canSee = (c, entity) => !c.allowed || c.allowed.has(entity) || !!c.extra?.has(entity);
+// ---------------------------------------------------------------- Assist (HA voice / text assistant)
+function cleanAssist(a) {
+    if (!a || typeof a !== 'object')
+        return undefined;
+    const voice = ['off', 'ptt', 'wake'].includes(a.voice) ? a.voice : 'ptt';
+    const hints = Array.isArray(a.hints) ? a.hints.map((h) => String(h).trim().slice(0, 80)).filter(Boolean).slice(0, 8) : undefined;
+    return { enabled: !!a.enabled, voice, tts: !!a.tts, ...(a.wakeInQuiet ? { wakeInQuiet: true } : {}),
+        ...(typeof a.pipeline === 'string' && /^[\w-]{1,64}$/.test(a.pipeline) ? { pipeline: a.pipeline } : {}), ...(hints?.length ? { hints } : {}) };
+}
+function assistCfg(c) {
+    if (c.mode === 'admin')
+        return { enabled: true, voice: 'ptt', tts: true }; // editor preview: preferred pipeline
+    const t = c.tabletId ? store.tablet(c.tabletId) : undefined;
+    return t?.assist;
+}
+async function onAssist(c, msg) {
+    const cfg = assistCfg(c);
+    if (!ha || !cfg?.enabled)
+        return send(c, { type: 'assist', ev: 'error', text: 'Asystent jest wyłączony dla tego tabletu (Tablety → Asystent)' });
+    if (!c.assist) {
+        const t = c.tabletId ? store.tablet(c.tabletId) : undefined;
+        c.assist = new AssistSession(ha, () => assistCfg(c), (e) => send(c, { type: 'assist', ...e }), () => (t ? quietState(t).on : false), t?.name ?? 'edytor');
+    }
+    if (msg.type === 'assist_text')
+        await c.assist.text(String(msg.text ?? ''));
+    else if (msg.type === 'assist_voice') {
+        if (cfg.voice === 'off')
+            return;
+        await c.assist.voice(!!msg.on);
+    }
+    else
+        c.assist.setWake(!!msg.on && cfg.voice === 'wake');
+}
 async function onClientMessage(c, raw) {
     let msg;
     try {
@@ -1079,6 +1145,8 @@ async function onClientMessage(c, raw) {
         return;
     if (msg.type === 'call')
         return onCall(c, msg);
+    if (msg.type === 'assist_text' || msg.type === 'assist_voice' || msg.type === 'assist_wake')
+        return onAssist(c, msg);
     if (msg.type === 'tv')
         return onTv(c, msg);
     if (msg.type === 'popup-open')

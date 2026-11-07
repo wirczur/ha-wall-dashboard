@@ -383,6 +383,8 @@ export interface Tablet {
   appPin?: string;
   /** Wall Dashboard Android app: device model reported when paired */
   appModel?: string;
+  /** voice / text assistant (HA Assist) on this tablet */
+  assist?: AssistCfg;
   /** last connection of the kiosk: time (updated on disconnect), app ("wa:0.1.4" Android app, "fully", "browser"), screen size */
   seen?: { at: number; app?: string; screen?: string };
   /** volume of notifications / doorbell sounds on this panel (system media volume, %); a trigger's own volume wins */
@@ -518,7 +520,28 @@ export interface EntityInfo {
 export interface DashboardSummary { id: string; title: string; views: number; widgets: number }
 
 // ---- browser <-> add-on websocket ----
+/** Assist on a tablet: HA pipeline (agent, STT, TTS, wake word) and how to talk to it */
+export interface AssistCfg {
+  enabled: boolean;
+  /** HA Assist pipeline id; empty = preferred pipeline */
+  pipeline?: string;
+  /** off = text only; ptt = hold the microphone button; wake = listen for the pipeline's wake word all the time */
+  voice?: 'off' | 'ptt' | 'wake';
+  /** speak the answer (pipeline TTS); never in quiet mode */
+  tts?: boolean;
+  /** wake word: keep listening in quiet mode too (default: pause) */
+  wakeInQuiet?: boolean;
+  /** suggestions under the input */
+  hints?: string[];
+}
+/** Assist progress sent to the tablet */
+export interface AssistEvent {
+  ev: 'listening' | 'wake' | 'stt' | 'reply' | 'tts' | 'error' | 'end' | 'ready';
+  run?: number; text?: string; url?: string; code?: string; conversationId?: string;
+}
+
 export type ServerMsg =
+  | ({ type: 'assist' } & AssistEvent)
   | { type: 'hello'; haConnected: boolean; mode: 'admin' | 'kiosk' }
   | { type: 'states'; states: HassState[] }
   | { type: 'state'; entity_id: string; state: HassState | null }
@@ -625,6 +648,10 @@ export interface TriggerDef {
 }
 
 export type ClientMsg =
+  /** Assist: ask in text / hold-to-talk start-stop / wake-word listening on-off (audio follows as binary frames, 16 kHz s16le mono) */
+  | { type: 'assist_text'; text: string }
+  | { type: 'assist_voice'; on: boolean }
+  | { type: 'assist_wake'; on: boolean }
   | ClientCall
   | { type: 'webrtc-config'; id: number; entity: string }
   | { type: 'webrtc-offer'; id: number; entity: string; offer: string }

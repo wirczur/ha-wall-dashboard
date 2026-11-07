@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+- **Asystent (Assist z Home Assistant)** na tabletach – włączany osobno dla każdego tabletu (Tablety → Asystent):
+  - okrągły przycisk w rogu ekranu, okno rozmowy z podpowiedziami, pisanie poleceń;
+  - **przytrzymaj mikrofon i mów** – dźwięk idzie przez add-on do potoku Assist (rozpoznawanie mowy w HA);
+  - **słowo wybudzające** – panel słucha cały czas (openWakeWord w HA), okno otwiera się samo; przerwa podczas rozmów (SIP / interkom), przy ukrytej aplikacji i – domyślnie – w trybie ciszy;
+  - odpowiedź tekstem i głosem (TTS z potoku, nigdy w trybie ciszy), kontekst rozmowy przez 5 minut;
+  - wybór potoku (agent: wbudowany, Ollama, OpenAI…, STT, TTS, słowo wybudzające) dla każdego tabletu.
+
 ## 1.3.9
 - **Harmonogram termostatu Grenton** (integracja wirczur/homeassistant-grenton 0.3+): widget *Klimat* z encją Grenton ma przycisk „Harmonogram” – podgląd tygodnia jako kolorowe paski, edycja godzin (co 15 min) i temperatur (co 0,5°), dodawanie / usuwanie zmian, kopiowanie dnia na dni robocze / weekend / cały tydzień. Zapis wywołuje `grenton.set_thermostat_schedule` (cały tydzień). Działa też z tabletu – z kiosku dozwolona jest tylko ta jedna usługa Grentona i tylko dla termostatu z dashboardu. Przycisk można ukryć w ustawieniach widgetu.
 

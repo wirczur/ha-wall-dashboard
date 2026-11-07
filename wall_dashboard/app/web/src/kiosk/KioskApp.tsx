@@ -10,6 +10,8 @@ import { hass } from '../lib/hass';
 import { DashboardView } from '../view/DashboardView';
 import { PopupHost } from './Popup';
 import { QuietBadge } from './QuietBadge';
+import { AssistantButton } from './Assistant';
+import { assistant, type AssistConfig } from '../lib/assist';
 import { IntercomHost } from '../widgets/intercom';
 import { useIntercom, type IcConfig } from '../lib/intercom';
 import { sip, useSip, type SipConfig } from '../lib/sip';
@@ -17,7 +19,7 @@ import { setNotifyVolume } from '../lib/fully';
 import { setThemes } from '../lib/themes';
 import type { CustomTheme } from '../../../shared/types';
 
-interface KioskData { tablet: { id: string; name: string; notifyVolume?: number; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig }; sip?: SipConfig; themes?: CustomTheme[]; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
+interface KioskData { tablet: { id: string; name: string; notifyVolume?: number; screen?: ScreenDef; appPin?: string; lite?: boolean; layout?: 'grid' | 'stack'; intercom?: boolean; intercomCfg?: IcConfig; assist?: AssistConfig }; sip?: SipConfig; themes?: CustomTheme[]; dashboards: DashboardDoc[]; houses: HouseDef[]; tvs: { id: string; name: string; apps: TvApp[] }[] }
 
 /** Tablet mode: shows the assigned dashboard, no settings. */
 export const KioskApp: FC = () => {
@@ -41,6 +43,7 @@ export const KioskApp: FC = () => {
       setHouses(d.houses || []); setTvs(d.tvs || []); setData(d); setError('');
       setThemes(d.themes);
       sip.start(d.sip);
+      assistant.start(d.tablet.assist);
       setNotifyVolume(d.tablet.notifyVolume);
       setCurrent((c) => (d.dashboards.some((x) => x.id === c) ? c : d.dashboards[0]?.id || ''));
     }).catch((e) => setError(e.message));
@@ -78,6 +81,7 @@ export const KioskApp: FC = () => {
     {isWallApp() && <SaverFeed clock={data.tablet.screen?.clock} />}
     <PopupHost />
     <QuietBadge />
+    <AssistantButton />
     {data.tablet.intercom !== false && <IntercomHost cfg={data.tablet.intercomCfg} />}
   </>;
 };

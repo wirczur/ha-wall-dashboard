@@ -1,14 +1,14 @@
 // Admin: tablets – list with live status on the left, the chosen tablet in tabs on the right.
 import { useCallback, useEffect, useState, type FC } from 'react';
 import { SoundSelect } from './Triggers';
-import type { DashboardSummary, DeviceCmd, PairRequest, SaverClock, ScreenDef, Settings, Tablet, TabletLive } from '../../../shared/types';
+import type { AssistCfg, DashboardSummary, DeviceCmd, PairRequest, SaverClock, ScreenDef, Settings, Tablet, TabletLive } from '../../../shared/types';
 import { api } from '../lib/api';
 import { hass } from '../lib/hass';
 import { Icon } from '../ui/Icon';
 
 export interface Info { version: string; kioskPort: number; haConnected: boolean; settings: Settings }
-type TTab = 'general' | 'dashboards' | 'screen' | 'calls' | 'quiet';
-const TTABS: [TTab, string][] = [['general', 'Ogólne'], ['dashboards', 'Dashboardy'], ['screen', 'Ekran'], ['calls', 'Rozmowy'], ['quiet', 'Cisza']];
+type TTab = 'general' | 'dashboards' | 'screen' | 'calls' | 'assist' | 'quiet';
+const TTABS: [TTab, string][] = [['general', 'Ogólne'], ['dashboards', 'Dashboardy'], ['screen', 'Ekran'], ['calls', 'Rozmowy'], ['assist', 'Asystent'], ['quiet', 'Cisza']];
 
 /** "wa:0.1.4" → "aplikacja 0.1.4" */
 export const appLabel = (a?: string) => !a ? '' : a.startsWith('wa:') ? 'aplikacja ' + a.slice(3) : a === 'fully' ? 'Fully Kiosk' : a === 'ios' ? 'iPhone / iPad' : 'przeglądarka';
@@ -147,6 +147,7 @@ const TabletDetail: FC<{ t: TabletLive; info: Info; dashes: DashboardSummary[]; 
           {sipOn ? <TabletSip t={t} onSave={(p) => save(p)} /> : <p className="muted small">Centrala SIP jest wyłączona – dzwonek z furtki idzie „po staremu” (wyzwalacz + go2rtc). Włączysz ją w <b>Furtka i SIP</b>.</p>}
           <IntercomSet t={t} save={save} />
         </>}
+        {tab === 'assist' && <AssistSet t={t} save={save} />}
         {tab === 'quiet' && <QuietEditor t={t} onSave={(q) => save({ quiet: q })} />}
       </div>
     </div>
@@ -173,6 +174,46 @@ const DashPick: FC<{ t: Tablet; dashes: DashboardSummary[]; save(p: Partial<Tabl
       {!mine.length && <p className="muted small">Brak – tablet pokaże pusty ekran.</p>}
     </div>
     {rest.length > 0 && <div className="row-btns">{rest.map((d) => <button key={d.id} className="btn" onClick={() => save({ dashboards: [...t.dashboards, d.id] })}><Icon name="plus" size={16} />{d.title}</button>)}</div>}
+  </>;
+};
+
+interface Pipeline { id: string; name: string; language?: string; agent?: string; stt?: string; tts?: string; wake?: string }
+/** Assist (HA voice assistant) on a tablet */
+const AssistSet: FC<{ t: Tablet; save(p: Partial<Tablet>): void }> = ({ t, save }) => {
+  const [pl, setPl] = useState<{ preferred?: string; pipelines: Pipeline[] } | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.get<{ preferred?: string; pipelines: Pipeline[] }>('assist/pipelines').then(setPl).catch((e) => setErr(e.message)); }, []);
+  const a: AssistCfg = t.assist ?? { enabled: false, voice: 'ptt', tts: true };
+  const set = (p: Partial<AssistCfg>) => save({ assist: { ...a, ...p } });
+  const cur = pl?.pipelines.find((p) => p.id === (a.pipeline || pl.preferred));
+  return <>
+    <label className="check"><input type="checkbox" checked={a.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+      Asystent na tym tablecie – okrągły przycisk w rogu ekranu (czat, głos)</label>
+    <p className="muted small">Asystent to Assist z Home Assistant – steruje encjami <b>udostępnionymi dla Assist</b> w HA (Ustawienia → Asystenci głosowi → Udostępnianie), nie tylko tymi z dashboardu tego tabletu.</p>
+    {a.enabled && <>
+      <label className="field"><span>Potok Assist (agent, rozpoznawanie mowy, głos)</span>
+        <select value={a.pipeline ?? ''} onChange={(e) => set({ pipeline: e.target.value || undefined })}>
+          <option value="">Domyślny z HA{pl?.preferred ? ' (' + (pl.pipelines.find((p) => p.id === pl.preferred)?.name ?? '') + ')' : ''}</option>
+          {pl?.pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}{p.language ? ' · ' + p.language : ''}</option>)}
+        </select>
+        <small className="muted">{err ? 'Nie udało się pobrać potoków: ' + err : cur ? `agent: ${cur.agent ?? '—'} · mowa→tekst: ${cur.stt ?? 'brak'} · głos: ${cur.tts ?? 'brak'} · słowo wybudzające: ${cur.wake ?? 'brak'}` : 'Potoki tworzysz w HA: Ustawienia → Asystenci głosowi.'}</small>
+      </label>
+      <label className="field"><span>Głos</span>
+        <select value={a.voice ?? 'ptt'} onChange={(e) => set({ voice: e.target.value as AssistCfg['voice'] })}>
+          <option value="off">Tylko tekst</option>
+          <option value="ptt">Przytrzymaj mikrofon i mów</option>
+          <option value="wake">Słowo wybudzające (panel słucha cały czas) + mikrofon</option>
+        </select>
+        {a.voice !== 'off' && cur && !cur.stt && <small className="warn-t">Ten potok nie ma rozpoznawania mowy (STT) – głos nie zadziała. Dodaj np. Whisper albo Home Assistant Cloud.</small>}
+        {a.voice === 'wake' && cur && !cur.wake && <small className="warn-t">Ten potok nie ma słowa wybudzającego – dodaj openWakeWord (dodatek + integracja Wyoming) i wybierz je w potoku.</small>}
+        {a.voice === 'wake' && <small className="muted">Panel wysyła dźwięk z mikrofonu do HA cały czas (ok. 32 kB/s). Przerwa podczas rozmów, przy wygaszonej aplikacji{a.wakeInQuiet ? '' : ' i w trybie ciszy'}.</small>}
+      </label>
+      {a.voice === 'wake' && <label className="check"><input type="checkbox" checked={!!a.wakeInQuiet} onChange={(e) => set({ wakeInQuiet: e.target.checked || undefined })} />Słuchaj słowa wybudzającego także w trybie ciszy</label>}
+      <label className="check"><input type="checkbox" checked={!!a.tts} onChange={(e) => set({ tts: e.target.checked })} />Odpowiadaj głosem (TTS z potoku; w trybie ciszy tylko tekst)</label>
+      <label className="field"><span>Podpowiedzi (jedna w linii)</span>
+        <textarea rows={4} defaultValue={(a.hints ?? []).join('\n')} placeholder={'Zgaś wszystkie światła na parterze\nJaka jest temperatura w salonie?'}
+          onBlur={(e) => set({ hints: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })} /></label>
+    </>}
   </>;
 };
 

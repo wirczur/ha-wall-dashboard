@@ -1,6 +1,6 @@
 import { deviceCommand } from './device';
 import { useSyncExternalStore } from 'react';
-import type { ClientMsg, DashboardDoc, HassState, PopupDef, QuietState, ServerMsg, TvAction, TvStatus, WebRtcEvent, WakeOptions } from '../../../shared/types';
+import type { AssistEvent, ClientMsg, DashboardDoc, HassState, PopupDef, QuietState, ServerMsg, TvAction, TvStatus, WebRtcEvent, WakeOptions } from '../../../shared/types';
 import { boot, keyQuery } from './boot';
 import { setQuietMode } from './fully';
 
@@ -18,6 +18,7 @@ class HassStore {
   private statusListeners = new Set<Listener>();
   private dashListeners = new Set<(ids: string[]) => void>();
   private previewListeners = new Set<(doc: DashboardDoc, until: number) => void>();
+  private assistListeners = new Set<(e: AssistEvent) => void>();
   private rtcListeners = new Map<number, (e: WebRtcEvent) => void>();
   private tvPending = new Map<number, { resolve: (s?: TvStatus) => void; reject: (e: Error) => void }>();
   private popupListeners = new Set<(p: PopupDef | null, closeId?: string) => void>();
@@ -93,6 +94,7 @@ class HassStore {
       }
       case 'dashboards-changed': this.dashListeners.forEach((l) => l(m.ids)); break;
       case 'preview': this.previewListeners.forEach((l) => l(m.doc, m.until)); break;
+      case 'assist': this.assistListeners.forEach((l) => l(m)); break;
       case 'webrtc': this.rtcListeners.get(m.id)?.(m.event); break;
       case 'tv': {
         const p = this.tvPending.get(m.id); if (!p) break;
@@ -121,6 +123,9 @@ class HassStore {
   }
 
   /** Raw message to the add-on (WebRTC signalling). Returns false when offline. */
+  onAssist(l: (e: AssistEvent) => void) { this.assistListeners.add(l); return () => { this.assistListeners.delete(l); }; }
+  /** Assist audio (16 kHz s16le mono) */
+  sendBinary(buf: ArrayBuffer): boolean { if (this.ws?.readyState !== WebSocket.OPEN) return false; this.ws.send(buf); return true; }
   send(msg: ClientMsg): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify(msg)); return true;
