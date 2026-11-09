@@ -9,7 +9,7 @@ import { sip } from './sip';
 
 export interface AssistConfig { enabled: boolean; voice: 'off' | 'ptt' | 'wake'; tts: boolean; wakeInQuiet?: boolean; hints?: string[] }
 export type AssistPhase = 'idle' | 'ready' | 'listening' | 'thinking' | 'speaking';
-export interface AssistMsg { id: number; who: 'me' | 'ai' | 'err'; text: string }
+export interface AssistMsg { id: number; who: 'me' | 'ai' | 'err' | 'sep'; text: string }
 export interface AssistState { cfg: AssistConfig | null; open: boolean; phase: AssistPhase; msgs: AssistMsg[]; byWake: boolean; wakeOn: boolean; micError?: string }
 
 /** microphone → 16 kHz PCM frames over the add-on connection */
@@ -64,6 +64,8 @@ class Assistant {
   private closeTimer?: number;
   private ptt = false;
   private watch?: number;
+  /** conversation id HA gave the last answer – a different one means the agent starts from scratch */
+  private conv?: string;
 
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
   private set(p: Partial<AssistState>) { this.state = { ...this.state, ...p }; this.listeners.forEach((l) => l()); }
@@ -100,6 +102,13 @@ class Assistant {
       if (!this.ptt) this.mic.stop();
       this.set({ wakeOn: false, phase: this.state.phase === 'ready' ? 'idle' : this.state.phase });
     }
+  }
+
+  /** "Nowa rozmowa": empty window, the agent forgets the context */
+  reset() {
+    this.stopAudio(); this.conv = undefined;
+    hass.send({ type: 'assist_reset' });
+    this.set({ msgs: [], phase: this.state.wakeOn ? 'ready' : 'idle' });
   }
 
   open(on = true) { clearTimeout(this.closeTimer); this.set({ open: on, byWake: false }); if (!on) this.stopAudio(); }
@@ -142,7 +151,17 @@ class Assistant {
         break;
       case 'listening': this.set({ phase: 'listening' }); break;
       case 'stt': this.say('me', e.text ?? ''); this.set({ phase: 'thinking' }); break;
-      case 'reply': this.say('ai', e.text ?? ''); break;
+      case 'reply': {
+        // HA started a new conversation (5 min of silence, reload) → mark where the agent's memory begins
+        if (e.conversationId && this.conv && e.conversationId !== this.conv) {
+          const msgs = [...this.state.msgs];
+          let i = msgs.length - 1; while (i >= 0 && msgs[i].who !== 'me') i--;
+          if (i > 0) { msgs.splice(i, 0, { id: ++this.seq, who: 'sep', text: 'Nowa rozmowa – asystent nie pamięta wcześniejszych pytań' }); this.set({ msgs }); }
+        }
+        if (e.conversationId) this.conv = e.conversationId;
+        this.say('ai', e.text ?? '');
+        break;
+      }
       case 'tts': {
         if (hass.quiet.on || !e.url) break;
         this.stopAudio();

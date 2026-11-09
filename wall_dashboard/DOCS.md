@@ -266,6 +266,7 @@ Wybudzanie w **Fully Kiosk Browser**: *Settings → Advanced Web Settings → En
 - **Potok Assist** – wybierasz jeden z potoków HA (Ustawienia → Asystenci głosowi): agent rozmowy (wbudowany, Ollama, OpenAI…), rozpoznawanie mowy (np. Whisper), głos (np. Piper) i słowo wybudzające (openWakeWord). Puste = domyślny potok HA.
 - **Głos:** *tylko tekst*, *przytrzymaj mikrofon i mów* albo *słowo wybudzające* – panel wysyła dźwięk z mikrofonu do HA cały czas (ok. 32 kB/s, 16 kHz), po wykryciu słowa okno otwiera się samo i zamyka po odpowiedzi. Słuchanie wstrzymuje się podczas rozmów (SIP, interkom), gdy aplikacja jest w tle i – jeśli nie zaznaczysz inaczej – w trybie ciszy.
 - **Odpowiadaj głosem** – odpowiedź z TTS potoku (w trybie ciszy tylko tekst).
+- **Rozmowa** trzyma kontekst przez 5 minut ciszy (tak długo pamięta ją HA). Gdy zacznie się nowa, w historii pojawia się kreska „Nowa rozmowa”. Przycisk **Nowa rozmowa** w oknie zaczyna od zera od razu.
 - Mikrofon w przeglądarce wymaga **HTTPS** kiosku (jak interkom).
 - Asystent steruje encjami **udostępnionymi dla Assist** w HA (Ustawienia → Asystenci głosowi → Udostępnianie) – nie tylko tymi z dashboardu tabletu. Udostępniaj tylko to, czym asystent ma sterować z paneli.
 

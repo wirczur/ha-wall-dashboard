@@ -1559,3 +1559,23 @@ span.gs-time { border-color: transparent; background: transparent; }
 .as-send, .as-mic { width: 54px; height: 50px; border-radius: 16px; border: 0; display: grid; place-items: center; background: var(--accent); color: var(--on-accent, #fff); touch-action: none; user-select: none; -webkit-user-select: none; }
 .as-mic.on { background: var(--err); transform: scale(1.06); }
 .as-err { color: var(--err); }
+
+/* Assist: new conversation */
+.as-new { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--fg); font-size: 13px; font-weight: 600; }
+.as-sep { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin: 4px 0; }
+.as-sep::before, .as-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.as-sep span { flex: none; max-width: 80%; text-align: center; }
+
+/* camera: full screen */
+.w-cam-full { position: absolute; right: 8px; top: 8px; z-index: 3; width: 40px; height: 40px; border-radius: 12px; border: 0; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .45); color: #fff; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.cam-full { position: fixed; inset: 0; z-index: 500; background: #000; }
+.cam-full .live-cam, .cam-full .w-camera { position: absolute; inset: 0; height: 100%; }
+.cam-full video, .cam-full .w-image { object-fit: contain !important; }
+.cam-full.fill video, .cam-full.fill .w-image { object-fit: cover !important; }
+.cam-full-bar { position: absolute; left: 0; right: 0; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 14px 16px;
+  background: linear-gradient(rgba(0, 0, 0, .55), transparent); color: #fff; }
+.cam-full-bar b { font-size: 17px; }
+.cam-full-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; justify-content: center; padding: 0 12px; border-radius: 12px; border: 0;
+  background: rgba(255, 255, 255, .16); color: #fff; font-weight: 600; font-size: 14px; }
+.cam-full .w-live { top: 76px; left: 16px; } .cam-full .live-ctl { right: 16px; bottom: 16px; }

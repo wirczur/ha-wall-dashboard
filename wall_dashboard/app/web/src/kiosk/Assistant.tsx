@@ -35,11 +35,12 @@ const AssistSheet: FC = () => {
           <b><Icon name="mdi:account-voice" size={20} /> Asystent</b>
           <small>{PHASE[st.phase] ?? (st.wakeOn ? 'słucha słowa wybudzającego' : '')}</small>
           <span className="grow" />
+          {st.msgs.length > 0 && <button className="as-new" onClick={() => assistant.reset()} title="Zacznij od zera – asystent zapomni wcześniejsze pytania"><Icon name="mdi:chat-plus-outline" size={18} />Nowa rozmowa</button>}
           <button className="as-x" onClick={() => assistant.open(false)} aria-label="Zamknij"><Icon name="close" size={20} /></button>
         </div>
         <div className="as-list" ref={list}>
           {!st.msgs.length && <p className="as-empty">Zapytaj o coś albo poproś o zmianę – np. światła, temperaturę, rolety.{voice ? ' Przytrzymaj mikrofon i mów.' : ''}</p>}
-          {st.msgs.map((m) => <div key={m.id} className={'as-m ' + m.who}>{m.text}</div>)}
+          {st.msgs.map((m) => m.who === 'sep' ? <div key={m.id} className="as-sep"><span>{m.text}</span></div> : <div key={m.id} className={'as-m ' + m.who}>{m.text}</div>)}
           {st.phase === 'thinking' && <div className="as-m ai as-dots"><i /><i /><i /></div>}
         </div>
         {st.micError && <small className="as-err">{st.micError}</small>}

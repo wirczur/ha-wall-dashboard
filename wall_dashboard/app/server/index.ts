@@ -23,7 +23,7 @@ import { sipLinks, sipProxy, type SipMsg } from './sip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -925,14 +925,15 @@ function assistCfg(c: Client): AssistCfg | undefined {
   const t = c.tabletId ? store.tablet(c.tabletId) : undefined;
   return t?.assist;
 }
-async function onAssist(c: Client, msg: Extract<ClientMsg, { type: 'assist_text' | 'assist_voice' | 'assist_wake' }>) {
+async function onAssist(c: Client, msg: Extract<ClientMsg, { type: 'assist_text' | 'assist_voice' | 'assist_wake' | 'assist_reset' }>) {
   const cfg = assistCfg(c);
   if (!ha || !cfg?.enabled) return send(c, { type: 'assist', ev: 'error', text: 'Asystent jest wyłączony dla tego tabletu (Tablety → Asystent)' });
   if (!c.assist) {
     const t = c.tabletId ? store.tablet(c.tabletId) : undefined;
     c.assist = new AssistSession(ha, () => assistCfg(c), (e) => send(c, { type: 'assist', ...e }), () => (t ? quietState(t).on : false), t?.name ?? 'edytor');
   }
-  if (msg.type === 'assist_text') await c.assist.text(String(msg.text ?? ''));
+  if (msg.type === 'assist_reset') c.assist.reset();
+  else if (msg.type === 'assist_text') await c.assist.text(String(msg.text ?? ''));
   else if (msg.type === 'assist_voice') { if (cfg.voice === 'off') return; await c.assist.voice(!!msg.on); }
   else c.assist.setWake(!!msg.on && cfg.voice === 'wake');
 }
@@ -942,7 +943,7 @@ async function onClientMessage(c: Client, raw: string) {
   try { msg = JSON.parse(raw); } catch { return; }
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'call') return onCall(c, msg);
-  if (msg.type === 'assist_text' || msg.type === 'assist_voice' || msg.type === 'assist_wake') return onAssist(c, msg);
+  if (msg.type === 'assist_text' || msg.type === 'assist_voice' || msg.type === 'assist_wake' || msg.type === 'assist_reset') return onAssist(c, msg);
   if (msg.type === 'tv') return onTv(c, msg);
   if (msg.type === 'popup-open') return onPopupOpen(c, msg.trigger);
   if (msg.type === 'quiet') {
@@ -968,7 +969,7 @@ async function onClientMessage(c: Client, raw: string) {
   }
   if (msg.type.startsWith('ic-')) return onIntercom(c, msg as IcClientMsg);
   if (msg.type === 'popup-dismiss') { if (typeof msg.popupId === 'string' && msg.popupId) { log.info(`Pop-up ${msg.popupId} odrzucony na tablecie`); sendPopup({ id: msg.popupId, action: 'close' }); callEnd(msg.popupId); } return; }
-  if (msg.type.startsWith('webrtc-')) return onWebRtc(c, msg as Exclude<ClientMsg, ClientCall | { type: 'tv' } | { type: 'popup-dismiss' } | { type: 'popup-open' } | { type: 'popup-event' } | { type: 'quiet' } | IcClientMsg | { type: 'assist_text' | 'assist_voice' | 'assist_wake' }>).catch((e) => send(c, { type: 'webrtc', id: (msg as any).id, event: { type: 'error', message: e.message } }));
+  if (msg.type.startsWith('webrtc-')) return onWebRtc(c, msg as Exclude<ClientMsg, ClientCall | { type: 'tv' } | { type: 'popup-dismiss' } | { type: 'popup-open' } | { type: 'popup-event' } | { type: 'quiet' } | IcClientMsg | { type: 'assist_text' | 'assist_voice' | 'assist_wake' | 'assist_reset' }>).catch((e) => send(c, { type: 'webrtc', id: (msg as any).id, event: { type: 'error', message: e.message } }));
 }
 
 async function onCall(c: Client, msg: ClientCall) {
@@ -1006,7 +1007,7 @@ async function onTv(c: Client, msg: Extract<ClientMsg, { type: 'tv' }>) {
 }
 
 /** Live camera: the browser's SDP offer goes to HA (camera/webrtc/offer, go2rtc inside HA); answer and ICE come back. */
-async function onWebRtc(c: Client, msg: Exclude<ClientMsg, ClientCall | { type: 'tv' } | { type: 'popup-dismiss' } | { type: 'popup-open' } | { type: 'popup-event' } | { type: 'quiet' } | IcClientMsg | { type: 'assist_text' | 'assist_voice' | 'assist_wake' }>) {
+async function onWebRtc(c: Client, msg: Exclude<ClientMsg, ClientCall | { type: 'tv' } | { type: 'popup-dismiss' } | { type: 'popup-open' } | { type: 'popup-event' } | { type: 'quiet' } | IcClientMsg | { type: 'assist_text' | 'assist_voice' | 'assist_wake' | 'assist_reset' }>) {
   const client = requireHa();
   if (msg.type === 'webrtc-close') {
     const sub = c.rtc?.get(msg.id); c.rtc?.delete(msg.id);

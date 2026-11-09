@@ -114,6 +114,11 @@ export const WidgetInspector: FC<{
             {o.provider === 'go2rtc' && <TextF label="Strumień dla słabych paneli (Lite)" value={o.liteStream} onChange={(v) => opt('liteStream', v)} placeholder="np. furtka_sub – substream H.264 ≤ 1080p" />}
             <CheckF label="Rozmowa (mikrofon tabletu)" value={o.talk} onChange={(v) => opt('talk', v || undefined)} />
           </>}
+          <SelectF label="Pełny ekran" value={o.fullscreen === false ? 'off' : o.fullscreen === 'tap' ? 'tap' : 'button'}
+            options={[['button', 'Przycisk w rogu kafelka'], ['tap', 'Dotknięcie obrazu (i przycisk)'], ['off', 'Wyłączony']]}
+            onChange={(v) => opt('fullscreen', v === 'off' ? false : v === 'tap' ? 'tap' : undefined)} />
+          {o.fullscreen !== false && <SelectF label="Obraz na pełnym ekranie" value={o.fullFit ?? 'contain'} options={[['contain', 'Cały obraz (paski po bokach)'], ['cover', 'Wypełnij ekran (przycina brzegi)']]}
+            onChange={(v) => opt('fullFit', v === 'contain' ? undefined : v)} hint="Na pełnym ekranie można też przełączyć przyciskiem" />}
         </>}
         {w.type === 'house3d' && <HouseOptions o={o} opt={opt} />}
         {w.type === 'remote' && <RemoteOptions o={o} opt={opt} />}

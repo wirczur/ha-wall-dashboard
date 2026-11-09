@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+- Asystent: przycisk **„Nowa rozmowa”** (czyści okno, agent zapomina kontekst) i **separator** w historii, gdy HA zaczął nową rozmowę (po 5 minutach ciszy albo po przeładowaniu) – widać, od kiedy asystent nie pamięta wcześniejszych pytań.
+- Kamera: **pełny ekran** – przycisk w rogu kafelka (opcjonalnie dotknięcie obrazu), na pełnym ekranie przełącznik „Wypełnij / Cały obraz”, rozmowa i dźwięk działają jak w kafelku. Ustawienia widgetu: Pełny ekran (przycisk / dotknięcie / wyłączony) i domyślne dopasowanie obrazu.
+
 ## 1.4.0
 - **Asystent (Assist z Home Assistant)** na tabletach – włączany osobno dla każdego tabletu (Tablety → Asystent):
   - okrągły przycisk w rogu ekranu, okno rozmowy z podpowiedziami, pisanie poleceń;

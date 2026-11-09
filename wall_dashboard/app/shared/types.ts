@@ -652,6 +652,8 @@ export type ClientMsg =
   | { type: 'assist_text'; text: string }
   | { type: 'assist_voice'; on: boolean }
   | { type: 'assist_wake'; on: boolean }
+  /** "Nowa rozmowa": forget the conversation context */
+  | { type: 'assist_reset' }
   | ClientCall
   | { type: 'webrtc-config'; id: number; entity: string }
   | { type: 'webrtc-offer'; id: number; entity: string; offer: string }

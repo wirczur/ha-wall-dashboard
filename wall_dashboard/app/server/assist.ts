@@ -52,6 +52,9 @@ export class AssistSession {
     this.ha.sendBinary(Buffer.concat([Buffer.from([r.handler]), chunk]));
   }
 
+  /** "Nowa rozmowa" on the panel */
+  reset() { this.conversationId = undefined; this.lastTalk = 0; if (this.run && this.run.mode !== 'wake') this.stopRun(); }
+
   close() { this.closed = true; this.wake = false; clearTimeout(this.wakeTimer); this.stopRun(); }
 
   private startWake() {

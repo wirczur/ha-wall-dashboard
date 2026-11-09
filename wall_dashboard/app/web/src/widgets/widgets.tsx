@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type FC } from 'react';
+import { createPortal } from 'react-dom';
 import type { ActionCtx } from '../lib/actions';
 import type { WidgetDef, WidgetType } from '../../../shared/types';
 import { cameraUrl } from '../lib/api';
@@ -218,10 +219,39 @@ const Camera: FC<WidgetProps> = ({ w }) => {
   const o = w.options || {};
   const g2 = o.provider === 'go2rtc' && o.stream ? { stream: streamName(o.stream), lite: o.liteStream ? streamName(o.liteStream) : undefined } : undefined;
   if (!w.entity && !g2) return <div className="w-center w-sub">{o.provider === 'go2rtc' ? 'Podaj nazwę strumienia go2rtc' : 'Wybierz encję camera'}</div>;
-  return <div className="w-camera-wrap" onPointerDown={(e) => e.stopPropagation()}>
-    <CameraView entity={g2 ? undefined : w.entity} talk={!!o.talk} snapshot={o.mode === 'snapshot'} refresh={o.refresh}
-      go2rtc={g2} title={w.style?.hideTitle ? undefined : w.title} />
-  </div>;
+  return <CameraTile o={o} entity={g2 ? undefined : w.entity} g2={g2} title={w.style?.hideTitle ? undefined : w.title} fullTitle={w.title} />;
+};
+
+/** camera in a tile + "full screen" (button in the corner, or tapping the picture when the option says so) */
+const CameraTile: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; fullTitle?: string }> = ({ o, entity, g2, title, fullTitle }) => {
+  const [full, setFull] = useState(false);
+  const canFull = o.fullscreen !== false;
+  return <>
+    <div className="w-camera-wrap" onPointerDown={(e) => e.stopPropagation()} onClick={() => { if (canFull && o.fullscreen === 'tap') setFull(true); }}>
+      {/* the tile's own video stops while the full-screen one plays – one stream per camera on weak panels */}
+      {!full && <CameraView entity={entity} talk={!!o.talk} snapshot={o.mode === 'snapshot'} refresh={o.refresh} go2rtc={g2} title={title} />}
+      {canFull && <button className="w-cam-full" onClick={(e) => { e.stopPropagation(); setFull(true); }} aria-label="Pełny ekran" title="Pełny ekran"><Icon name="mdi:fullscreen" size={22} /></button>}
+    </div>
+    {full && <CameraFull entity={entity} g2={g2} o={o} title={fullTitle} onClose={() => setFull(false)} />}
+  </>;
+};
+const CameraFull: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; onClose(): void }> = ({ o, entity, g2, title, onClose }) => {
+  const [fill, setFill] = useState(() => o.fullFit === 'cover');
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  return createPortal(
+    <div className={'cam-full' + (fill ? ' fill' : '')} role="dialog" aria-label={'Kamera ' + (title ?? '')} onPointerDown={(e) => e.stopPropagation()}>
+      <CameraView entity={entity} talk={!!o.talk} snapshot={o.mode === 'snapshot'} refresh={o.refresh} go2rtc={g2} />
+      <div className="cam-full-bar">
+        {title && <b>{title}</b>}
+        <span className="grow" />
+        <button onClick={() => setFill(!fill)} aria-pressed={fill} title={fill ? 'Pokaż cały obraz' : 'Wypełnij ekran (przytnie brzegi)'}>
+          <Icon name={fill ? 'mdi:fit-to-screen-outline' : 'mdi:arrow-expand-all'} size={20} />{fill ? 'Cały obraz' : 'Wypełnij'}</button>
+        <button onClick={onClose} aria-label="Zamknij pełny ekran"><Icon name="close" size={22} /></button>
+      </div>
+    </div>, document.body);
 };
 
 // ---------------------------------------------------------------- 3D house (three.js loaded only when used)

@@ -21,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -1123,7 +1123,9 @@ async function onAssist(c, msg) {
         const t = c.tabletId ? store.tablet(c.tabletId) : undefined;
         c.assist = new AssistSession(ha, () => assistCfg(c), (e) => send(c, { type: 'assist', ...e }), () => (t ? quietState(t).on : false), t?.name ?? 'edytor');
     }
-    if (msg.type === 'assist_text')
+    if (msg.type === 'assist_reset')
+        c.assist.reset();
+    else if (msg.type === 'assist_text')
         await c.assist.text(String(msg.text ?? ''));
     else if (msg.type === 'assist_voice') {
         if (cfg.voice === 'off')
@@ -1145,7 +1147,7 @@ async function onClientMessage(c, raw) {
         return;
     if (msg.type === 'call')
         return onCall(c, msg);
-    if (msg.type === 'assist_text' || msg.type === 'assist_voice' || msg.type === 'assist_wake')
+    if (msg.type === 'assist_text' || msg.type === 'assist_voice' || msg.type === 'assist_wake' || msg.type === 'assist_reset')
         return onAssist(c, msg);
     if (msg.type === 'tv')
         return onTv(c, msg);
