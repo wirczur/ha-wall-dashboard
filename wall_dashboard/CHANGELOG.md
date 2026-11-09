@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.3
+- Kamera na pełnym ekranie: **Zamknij** i **Wypełnij** przeniesione na dół (na iPhonie góra ekranu jest pod paskiem stanu / wycięciem), odstępy od krawędzi z bezpiecznych obszarów ekranu (notch, pasek gestów), mniejszy pad sterowania na telefonie.
+
 ## 1.4.2
 - Kamera: **sterowanie góra / dół / lewo / prawo / zoom** na obrazie (w kafelku po dotknięciu ikony pada, na pełnym ekranie od razu, większe):
   - **ONVIF** (integracja ONVIF w HA): ruch, dopóki trzymasz przycisk, zatrzymanie po puszczeniu, pozycje zapisane w kamerze jako przyciski (pierwsza = „dom”);

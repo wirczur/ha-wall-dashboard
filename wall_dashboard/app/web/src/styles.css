@@ -1573,12 +1573,17 @@ span.gs-time { border-color: transparent; background: transparent; }
 .cam-full .live-cam, .cam-full .w-camera { position: absolute; inset: 0; height: 100%; }
 .cam-full video, .cam-full .w-image { object-fit: contain !important; }
 .cam-full.fill video, .cam-full.fill .w-image { object-fit: cover !important; }
-.cam-full-bar { position: absolute; left: 0; right: 0; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 14px 16px;
-  background: linear-gradient(rgba(0, 0, 0, .55), transparent); color: #fff; }
-.cam-full-bar b { font-size: 17px; }
-.cam-full-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; justify-content: center; padding: 0 12px; border-radius: 12px; border: 0;
+.cam-full { --sa-t: env(safe-area-inset-top, 0px); --sa-b: env(safe-area-inset-bottom, 0px); --sa-l: env(safe-area-inset-left, 0px); --sa-r: env(safe-area-inset-right, 0px); }
+.cam-full-title { position: absolute; z-index: 2; top: calc(var(--sa-t) + 12px); left: calc(var(--sa-l) + 16px); color: #fff; font-size: 16px; padding: 5px 12px; border-radius: 10px; background: rgba(0, 0, 0, .45); pointer-events: none; }
+.cam-full-bar { position: absolute; z-index: 2; right: calc(var(--sa-r) + 16px); bottom: calc(var(--sa-b) + 16px); display: flex; gap: 8px; }
+.cam-full-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: 48px; min-width: 48px; justify-content: center; padding: 0 14px; border-radius: 14px; border: 0;
+  background: rgba(0, 0, 0, .55); color: #fff; font-weight: 600; font-size: 14px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.cam-full-x { background: rgba(255, 255, 255, .9) !important; color: #111 !important; }
   background: rgba(255, 255, 255, .16); color: #fff; font-weight: 600; font-size: 14px; }
-.cam-full .w-live { top: 76px; left: 16px; } .cam-full .live-ctl { right: 16px; bottom: 16px; }
+.cam-full .w-live { top: calc(var(--sa-t) + 56px); left: calc(var(--sa-l) + 16px); }
+.cam-full .live-ctl { right: calc(var(--sa-r) + 16px); bottom: calc(var(--sa-b) + 76px); }
+.cam-full .ptz.big { left: calc(var(--sa-l) + 16px); bottom: calc(var(--sa-b) + 16px); }
+@media (max-width: 600px), (max-height: 500px) { .cam-full .ptz.big .ptz-pad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); } .cam-full .ptz.big .ptz-zoom .ptz-b { width: 48px; height: 48px; } .cam-full .ptz.big { bottom: calc(var(--sa-b) + 84px); } .cam-full-bar button { padding: 0 10px; } }
 
 /* camera PTZ */
 .ptz-toggle { position: absolute; left: 8px; bottom: 8px; z-index: 3; width: 40px; height: 40px; border-radius: 12px; border: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .45); color: #fff; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
@@ -1598,3 +1603,4 @@ span.gs-time { border-color: transparent; background: transparent; }
 .ptz-presets { display: flex; flex-direction: column; gap: 6px; }
 .ptz-presets button { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 0; background: rgba(0, 0, 0, .45); color: #fff; font-weight: 600; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .ptz-err { left: auto; right: 8px; bottom: 56px; background: rgba(160, 30, 30, .8); }
+@media (max-height: 500px) and (min-width: 601px) { .cam-full .ptz.big { bottom: calc(var(--sa-b) + 16px); } }

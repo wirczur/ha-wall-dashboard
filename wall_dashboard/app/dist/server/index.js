@@ -21,7 +21,7 @@ import { TvRegistry } from './samsung.js';
 import { sipLinks, sipProxy } from './sip.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.4.2';
+const VERSION = '1.4.3';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);

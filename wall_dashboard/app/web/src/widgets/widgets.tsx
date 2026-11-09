@@ -251,12 +251,12 @@ const CameraFull: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: s
   return createPortal(
     <div className={'cam-full' + (fill ? ' fill' : '')} role="dialog" aria-label={'Kamera ' + (title ?? '')} onPointerDown={(e) => e.stopPropagation()}>
       <CameraView entity={entity} talk={!!o.talk} snapshot={o.mode === 'snapshot'} refresh={o.refresh} go2rtc={g2} />
+      {title && <b className="cam-full-title">{title}</b>}
+      {/* controls at the bottom: on iPhone the top of the screen sits under the status bar / notch */}
       <div className="cam-full-bar">
-        {title && <b>{title}</b>}
-        <span className="grow" />
         <button onClick={() => setFill(!fill)} aria-pressed={fill} title={fill ? 'Pokaż cały obraz' : 'Wypełnij ekran (przytnie brzegi)'}>
           <Icon name={fill ? 'mdi:fit-to-screen-outline' : 'mdi:arrow-expand-all'} size={20} />{fill ? 'Cały obraz' : 'Wypełnij'}</button>
-        <button onClick={onClose} aria-label="Zamknij pełny ekran"><Icon name="close" size={22} /></button>
+        <button className="cam-full-x" onClick={onClose} aria-label="Zamknij pełny ekran"><Icon name="close" size={24} />Zamknij</button>
       </div>
       {ptz && <PtzPad cfg={ptz} camera={ptzCamera} big onError={setErr} />}
       {err && <span className="w-cam-note ptz-err">{err}</span>}
