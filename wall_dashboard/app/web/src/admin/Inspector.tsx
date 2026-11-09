@@ -119,6 +119,7 @@ export const WidgetInspector: FC<{
             onChange={(v) => opt('fullscreen', v === 'off' ? false : v === 'tap' ? 'tap' : undefined)} />
           {o.fullscreen !== false && <SelectF label="Obraz na pełnym ekranie" value={o.fullFit ?? 'contain'} options={[['contain', 'Cały obraz (paski po bokach)'], ['cover', 'Wypełnij ekran (przycina brzegi)']]}
             onChange={(v) => opt('fullFit', v === 'contain' ? undefined : v)} hint="Na pełnym ekranie można też przełączyć przyciskiem" />}
+          <PtzF value={o.ptz} camera={w.entity} onChange={(v) => opt('ptz', v)} />
         </>}
         {w.type === 'house3d' && <HouseOptions o={o} opt={opt} />}
         {w.type === 'remote' && <RemoteOptions o={o} opt={opt} />}
@@ -744,6 +745,30 @@ const ViewMini: FC<{ view?: ViewDef }> = ({ view }) => {
       ))}
     </div>
   );
+};
+
+/** camera pan / tilt / zoom: ONVIF (onvif.ptz) or own entities per direction */
+const PtzF: FC<{ value?: Record<string, any>; camera?: string; onChange(v: Record<string, any> | undefined): void }> = ({ value, camera, onChange }) => {
+  const p = value ?? {};
+  const set = (k: string, v: unknown) => onChange(clean({ ...p, [k]: v }) as Record<string, any>);
+  const DIRS: [string, string][] = [['up', 'Góra'], ['down', 'Dół'], ['left', 'Lewo'], ['right', 'Prawo'], ['zoomIn', 'Przybliż'], ['zoomOut', 'Oddal'], ['home', 'Pozycja domowa']];
+  const ENT = ['button', 'input_button', 'script', 'scene', 'switch', 'input_boolean'];
+  return <>
+    <SelectF label="Sterowanie kamerą (góra / dół / boki / zoom)" value={p.mode ?? ''} options={[['', 'Brak'], ['onvif', 'ONVIF (integracja ONVIF w HA)'], ['entities', 'Własne przyciski / skrypty']]}
+      onChange={(v) => onChange(v ? { ...p, mode: v } : undefined)} />
+    {p.mode === 'onvif' && <>
+      <EntityF label="Kamera ONVIF (encja z integracji ONVIF)" value={p.entity} domains={['camera']} onChange={(v) => set('entity', v)} hint={camera ? `puste = ${camera}` : 'potrzebna, gdy obraz idzie bezpośrednio z go2rtc'} />
+      <NumF label="Prędkość (0,1–1)" value={p.speed} min={0.1} max={1} step={0.1} onChange={(v) => set('speed', v)} />
+      <div className="ins-row"><label>Pozycje zapisane w kamerze</label>
+        <div className="ins-ctl">
+          <input defaultValue={(p.presets ?? []).map((x: any) => `${x.preset}=${x.name}`).join(', ')} placeholder="1=Łóżeczko, 2=Drzwi" aria-label="Pozycje zapisane w kamerze"
+            onBlur={(e) => set('presets', e.target.value.split(',').map((x) => x.trim()).filter(Boolean).map((x) => { const [a, ...b] = x.split('='); return { preset: a.trim(), name: b.join('=').trim() }; }).filter((x) => x.preset))} />
+          <small>numer=nazwa, po przecinku. Pierwsza pozycja to przycisk „dom”; na pełnym ekranie wszystkie są przyciskami.</small>
+        </div></div>
+    </>}
+    {p.mode === 'entities' && DIRS.map(([k, l]) => <EntityF key={k} label={l} value={p[k]} domains={ENT} onChange={(v) => set(k, v)} />)}
+    {p.mode === 'entities' && <small className="muted">Np. przyciski z integracji Tuya / Reolink / Hikvision albo własne skrypty. Przytrzymanie naciska je co 0,6 s.</small>}
+  </>;
 };
 
 /** Rooms of a Dyson robot (hass_dyson.start_zone_clean takes their id or MyDyson name) */

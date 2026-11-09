@@ -10,6 +10,7 @@ import { hass, useEntities, useEntity, useQuiet } from '../lib/hass';
 import { formatNumber, friendly, isActive, stateLabel } from '../lib/format';
 import { Icon, iconFor } from '../ui/Icon';
 import { LiveCamera } from '../ui/LiveCamera';
+import { hasPtz, PtzPad, type PtzCfg } from './ptz';
 import { ClimateWidget } from './climate';
 import { MediaWidget } from './media';
 import { CalendarWidget } from './calendar';
@@ -219,24 +220,30 @@ const Camera: FC<WidgetProps> = ({ w }) => {
   const o = w.options || {};
   const g2 = o.provider === 'go2rtc' && o.stream ? { stream: streamName(o.stream), lite: o.liteStream ? streamName(o.liteStream) : undefined } : undefined;
   if (!w.entity && !g2) return <div className="w-center w-sub">{o.provider === 'go2rtc' ? 'Podaj nazwę strumienia go2rtc' : 'Wybierz encję camera'}</div>;
-  return <CameraTile o={o} entity={g2 ? undefined : w.entity} g2={g2} title={w.style?.hideTitle ? undefined : w.title} fullTitle={w.title} />;
+  return <CameraTile o={o} entity={g2 ? undefined : w.entity} g2={g2} title={w.style?.hideTitle ? undefined : w.title} fullTitle={w.title} ptzCamera={w.entity} />;
 };
 
 /** camera in a tile + "full screen" (button in the corner, or tapping the picture when the option says so) */
-const CameraTile: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; fullTitle?: string }> = ({ o, entity, g2, title, fullTitle }) => {
+const CameraTile: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; fullTitle?: string; ptzCamera?: string }> = ({ o, entity, g2, title, fullTitle, ptzCamera }) => {
   const [full, setFull] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { if (!err) return; const t = setTimeout(() => setErr(''), 4000); return () => clearTimeout(t); }, [err]);
+  const ptz = hasPtz(o.ptz, ptzCamera) ? o.ptz as PtzCfg : undefined;
   const canFull = o.fullscreen !== false;
   return <>
     <div className="w-camera-wrap" onPointerDown={(e) => e.stopPropagation()} onClick={() => { if (canFull && o.fullscreen === 'tap') setFull(true); }}>
       {/* the tile's own video stops while the full-screen one plays – one stream per camera on weak panels */}
       {!full && <CameraView entity={entity} talk={!!o.talk} snapshot={o.mode === 'snapshot'} refresh={o.refresh} go2rtc={g2} title={title} />}
       {canFull && <button className="w-cam-full" onClick={(e) => { e.stopPropagation(); setFull(true); }} aria-label="Pełny ekran" title="Pełny ekran"><Icon name="mdi:fullscreen" size={22} /></button>}
+      {ptz && !full && <PtzPad cfg={ptz} camera={ptzCamera} onError={setErr} />}
+      {err && <span className="w-cam-note ptz-err">{err}</span>}
     </div>
-    {full && <CameraFull entity={entity} g2={g2} o={o} title={fullTitle} onClose={() => setFull(false)} />}
+    {full && <CameraFull entity={entity} g2={g2} o={o} title={fullTitle} ptz={ptz} ptzCamera={ptzCamera} onClose={() => setFull(false)} />}
   </>;
 };
-const CameraFull: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; onClose(): void }> = ({ o, entity, g2, title, onClose }) => {
+const CameraFull: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: string; lite?: string }; title?: string; ptz?: PtzCfg; ptzCamera?: string; onClose(): void }> = ({ o, entity, g2, title, ptz, ptzCamera, onClose }) => {
   const [fill, setFill] = useState(() => o.fullFit === 'cover');
+  const [err, setErr] = useState('');
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
@@ -251,6 +258,8 @@ const CameraFull: FC<{ o: Record<string, any>; entity?: string; g2?: { stream: s
           <Icon name={fill ? 'mdi:fit-to-screen-outline' : 'mdi:arrow-expand-all'} size={20} />{fill ? 'Cały obraz' : 'Wypełnij'}</button>
         <button onClick={onClose} aria-label="Zamknij pełny ekran"><Icon name="close" size={22} /></button>
       </div>
+      {ptz && <PtzPad cfg={ptz} camera={ptzCamera} big onError={setErr} />}
+      {err && <span className="w-cam-note ptz-err">{err}</span>}
     </div>, document.body);
 };
 

@@ -1579,3 +1579,22 @@ span.gs-time { border-color: transparent; background: transparent; }
 .cam-full-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; justify-content: center; padding: 0 12px; border-radius: 12px; border: 0;
   background: rgba(255, 255, 255, .16); color: #fff; font-weight: 600; font-size: 14px; }
 .cam-full .w-live { top: 76px; left: 16px; } .cam-full .live-ctl { right: 16px; bottom: 16px; }
+
+/* camera PTZ */
+.ptz-toggle { position: absolute; left: 8px; bottom: 8px; z-index: 3; width: 40px; height: 40px; border-radius: 12px; border: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .45); color: #fff; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.ptz { position: absolute; left: 8px; bottom: 8px; z-index: 3; display: flex; align-items: flex-end; gap: 8px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ptz-pad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 2px; padding: 4px; border-radius: 50%; background: rgba(0, 0, 0, .4); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.ptz-b { border: 0; border-radius: 10px; background: transparent; color: #fff; display: grid; place-items: center; touch-action: none; }
+.ptz-b:active { background: rgba(255, 255, 255, .28); }
+.ptz-b.off { pointer-events: none; }
+.ptz-up { grid-area: 1 / 2; } .ptz-left { grid-area: 2 / 1; } .ptz-home { grid-area: 2 / 2; background: rgba(255, 255, 255, .12); border-radius: 50%; } .ptz-right { grid-area: 2 / 3; } .ptz-down { grid-area: 3 / 2; }
+.ptz-home.off { background: transparent; }
+.ptz-zoom { display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(0, 0, 0, .4); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.ptz-zoom .ptz-b { width: 38px; height: 38px; }
+.ptz-hide { width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .45); color: #fff; display: grid; place-items: center; }
+.ptz.big { left: 24px; bottom: 24px; gap: 14px; }
+.ptz.big .ptz-pad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); padding: 8px; }
+.ptz.big .ptz-zoom .ptz-b { width: 60px; height: 60px; }
+.ptz-presets { display: flex; flex-direction: column; gap: 6px; }
+.ptz-presets button { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 0; background: rgba(0, 0, 0, .45); color: #fff; font-weight: 600; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.ptz-err { left: auto; right: 8px; bottom: 56px; background: rgba(160, 30, 30, .8); }

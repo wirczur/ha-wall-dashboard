@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.2
+- Kamera: **sterowanie góra / dół / lewo / prawo / zoom** na obrazie (w kafelku po dotknięciu ikony pada, na pełnym ekranie od razu, większe):
+  - **ONVIF** (integracja ONVIF w HA): ruch, dopóki trzymasz przycisk, zatrzymanie po puszczeniu, pozycje zapisane w kamerze jako przyciski (pierwsza = „dom”);
+  - **własne przyciski / skrypty** dla każdego kierunku (np. Tuya, Reolink, Hikvision) – przytrzymanie naciska je co 0,6 s.
+- Z kiosku dozwolona jest tylko usługa `onvif.ptz` i tylko dla kamery z dashboardu.
+
 ## 1.4.1
 - Asystent: przycisk **„Nowa rozmowa”** (czyści okno, agent zapomina kontekst) i **separator** w historii, gdy HA zaczął nową rozmowę (po 5 minutach ciszy albo po przeładowaniu) – widać, od kiedy asystent nie pamięta wcześniejszych pytań.
 - Kamera: **pełny ekran** – przycisk w rogu kafelka (opcjonalnie dotknięcie obrazu), na pełnym ekranie przełącznik „Wypełnij / Cały obraz”, rozmowa i dźwięk działają jak w kafelku. Ustawienia widgetu: Pełny ekran (przycisk / dotknięcie / wyłączony) i domyślne dopasowanie obrazu.
