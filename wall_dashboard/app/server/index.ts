@@ -23,7 +23,7 @@ import { sipLinks, sipProxy, type SipMsg } from './sip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, '../web');
-const VERSION = '1.4.3';
+const VERSION = '1.4.4';
 /** newest Wall Dashboard Android app this add-on knows (the Stan page suggests updating older ones) */
 const LATEST_APP = '0.1.4';
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 8099);
@@ -545,20 +545,31 @@ async function proxyTts(file: string, res: express.Response) {
 }
 api.get('/assist/tts/:file', asyncH(async (req, res) => { await proxyTts(req.params.file, res); }));
 
-// ---------------------------------------------------------------- Dyson robot: clean chosen rooms (hass_dyson.start_zone_clean takes a device, not an entity)
+// ---------------------------------------------------------------- Dyson robot: clean chosen rooms
+// hass_dyson.start_zone_clean takes a device and room names; ha-dyson-spot-scrub's start_rooms_with_settings the vacuum and map room ids
 const ZONE_MODES = ['vacuum_only', 'vacuum_and_mop', 'mop_only', 'vacuum_then_mop'];
-async function robotZoneClean(entity: string, zonesIn: unknown, modeIn: unknown) {
+const SPOT_MODES: Record<string, string> = { vacuum_only: 'Vacuum', vacuum_and_mop: 'Vacuum and Mop', mop_only: 'Mop', vacuum_then_mop: 'Vacuum then Mop' };
+async function robotZoneClean(entity: string, zonesIn: unknown, modeIn: unknown, idsIn?: unknown) {
   if (!/^vacuum\.[a-z0-9_]+$/.test(entity)) throw Object.assign(new Error('To nie jest odkurzacz'), { status: 400 });
-  const zones = (Array.isArray(zonesIn) ? zonesIn : []).map((z) => String(z).slice(0, 60)).filter(Boolean).slice(0, 30);
+  const list = (v: unknown) => (Array.isArray(v) ? v : []).map((z) => String(z).slice(0, 60)).filter(Boolean).slice(0, 30);
+  const zones = list(zonesIn);
   if (!zones.length) throw Object.assign(new Error('Wybierz co najmniej jeden pokój'), { status: 400 });
   const client = requireHa();
   const reg = (await client.registries()).entities.find((e: any) => e.entity_id === entity);
-  if (!reg?.device_id) throw Object.assign(new Error('Nie znalazłem urządzenia tego odkurzacza w HA'), { status: 404 });
   const mode = ZONE_MODES.includes(String(modeIn)) ? String(modeIn) : undefined;
+  if (reg?.platform === 'dyson_spot_scrub') {
+    const ids = [...new Set(list(idsIn).length ? list(idsIn) : zones)];
+    // a mode chosen on the panel is saved as the rooms' mode – the same as the integration's own "Vacuum Mode"
+    const room_settings = mode ? Object.fromEntries(ids.map((id) => [id, { cleaning_mode: SPOT_MODES[mode] }])) : {};
+    await client.callService('dyson_spot_scrub', 'start_rooms_with_settings', { entity_id: entity, room_ids: ids, room_settings });
+    log.info(`Odkurzacz ${entity}: sprzątanie pokoi ${ids.join(', ')}${mode ? ' (' + mode + ')' : ''}`);
+    return;
+  }
+  if (!reg?.device_id) throw Object.assign(new Error('Nie znalazłem urządzenia tego odkurzacza w HA'), { status: 404 });
   await client.callService('hass_dyson', 'start_zone_clean', { device_id: reg.device_id, zones, ...(mode ? { cleaning_mode: mode } : {}) });
   log.info(`Odkurzacz ${entity}: sprzątanie pokoi ${zones.join(', ')}${mode ? ' (' + mode + ')' : ''}`);
 }
-api.post('/robot/zone', asyncH(async (req, res) => { await robotZoneClean(String(req.body?.entity ?? ''), req.body?.zones, req.body?.mode); res.json({ ok: true }); }));
+api.post('/robot/zone', asyncH(async (req, res) => { await robotZoneClean(String(req.body?.entity ?? ''), req.body?.zones, req.body?.mode, req.body?.ids); res.json({ ok: true }); }));
 
 api.get('/history-long/:entity', asyncH(async (req, res) => {
   res.json(await longHistory(req.params.entity, Math.min(120, Math.max(1, Number(req.query.days) || 60))));
@@ -726,7 +737,7 @@ kapi.post('/robot/zone', express.json({ limit: '8kb' }), asyncH(async (req, res)
   const { scope } = kioskAuth(req);
   const entity = String(req.body?.entity ?? '');
   if (!scope.entities.has(entity)) return res.status(403).json({ error: 'Ten odkurzacz nie należy do dashboardu tego tabletu' });
-  await robotZoneClean(entity, req.body?.zones, req.body?.mode); res.json({ ok: true });
+  await robotZoneClean(entity, req.body?.zones, req.body?.mode, req.body?.ids); res.json({ ok: true });
 }));
 kapi.get('/media/:entity/art', asyncH(async (req, res) => {
   const { scope } = kioskAuth(req);

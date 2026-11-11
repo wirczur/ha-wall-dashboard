@@ -19,27 +19,38 @@ const STATUS_PL: Record<string, string> = {
   'going home': 'wraca', 'returning to dock': 'wraca', 'mapping': 'mapuje', 'rain delay': 'przerwa – deszcz', raining: 'przerwa – deszcz', 'scheduled': 'zaplanowany'
 };
 /** hass-dyson dock states (firmware vocabulary, only partly known) */
-const DOCK_PL: Record<string, string> = { drying_mop: 'suszy mop', drying: 'suszy', washing_mop: 'pierze mop', washing: 'pierze', emptying: 'opróżnia pojemnik', emptying_bin: 'opróżnia pojemnik', charging: 'ładuje', idle: 'gotowa', refilling: 'uzupełnia wodę', draining: 'spuszcza wodę' };
+const DOCK_PL: Record<string, string> = { collecting_dust: 'opróżnia pojemnik', docked: 'gotowa', drying_mop: 'suszy mop', drying: 'suszy', washing_mop: 'pierze mop', washing: 'pierze', emptying: 'opróżnia pojemnik', emptying_bin: 'opróżnia pojemnik', charging: 'ładuje', idle: 'gotowa', refilling: 'uzupełnia wodę', draining: 'spuszcza wodę' };
 const dockPl = (v: string) => DOCK_PL[v.toLowerCase()] ?? v.toLowerCase().replace(/_/g, ' ');
 const MODES: [string, string][] = [['', 'Tryb: jak w ustawieniach pokoju'], ['vacuum_only', 'Odkurzanie'], ['vacuum_and_mop', 'Odkurz. + mop'], ['mop_only', 'Tylko mop'], ['vacuum_then_mop', 'Najpierw odkurz., potem mop']];
-/** per-room settings of hass-dyson (Spot+Scrub): select entities, options as the integration names them */
+/** Dyson Spot+Scrub (UNsync3D/ha-dyson-spot-scrub): option labels of its selects → the hass-dyson values used here */
+const SPOT_MODE: Record<string, string> = { 'Vacuum': 'vacuum_only', 'Vacuum and Mop': 'vacuum_and_mop', 'Mop': 'mop_only', 'Vacuum then Mop': 'vacuum_then_mop' };
+/** why ha-dyson-spot-scrub refuses a new clean (attribute start_block_reason) */
+const BLOCK_PL: Record<string, string> = {
+  disconnected: 'brak połączenia z chmurą Dyson', robot_fault: 'robot zgłasza błąd', washing_mop: 'stacja pierze mop', emptying_bin: 'stacja opróżnia pojemnik',
+  mapping_or_navigation: 'robot mapuje', returning_or_finishing: 'robot kończy sprzątanie', waiting_for_ready_state: 'robot jeszcze nie jest gotowy'
+};
+/** ha-dyson-spot-scrub uses fan_speed for the whole-home cleaning mode */
+const FAN_PL: Record<string, string> = { 'Room settings': 'jak w ustawieniach pokoi', 'Vacuum': 'odkurzanie', 'Vacuum and Mop': 'odkurzanie + mop', 'Mop': 'tylko mop', 'Vacuum then Mop': 'najpierw odkurzanie, potem mop' };
+const dur = (sec: number) => { const m = Math.max(1, Math.round(sec / 60)); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + ' min' : ''}`.trim() : m + ' min'; };
+/** per-room settings of hass-dyson / ha-dyson-spot-scrub (Spot+Scrub): select entities, options as the integration names them */
 type Room = { id: string; name: string; /** shown instead of the MyDyson name */ label?: string; mode?: string; power?: string; water?: string; wash?: string };
 const ROOM_SET: [keyof Room, string, Record<string, string>][] = [
-  ['mode', 'Tryb', { vacuum_only: 'Odkurzanie', vacuum_and_mop: 'Odkurzanie + mop', mop_only: 'Tylko mop', vacuum_then_mop: 'Najpierw odkurzanie, potem mop' }],
-  ['power', 'Moc', { auto: 'Auto', boost: 'Boost', quiet: 'Cicho', quick: 'Szybko' }],
-  ['water', 'Woda (mop)', { very_low: 'Bardzo mało', low: 'Mało', medium: 'Średnio', high: 'Dużo' }],
-  ['wash', 'Mycie mopa', { '1x': '1 raz', '2x': '2 razy' }]
+  ['mode', 'Tryb', { vacuum_only: 'Odkurzanie', vacuum_and_mop: 'Odkurzanie + mop', mop_only: 'Tylko mop', vacuum_then_mop: 'Najpierw odkurzanie, potem mop',
+    'Vacuum': 'Odkurzanie', 'Vacuum and Mop': 'Odkurzanie + mop', 'Mop': 'Tylko mop', 'Vacuum then Mop': 'Najpierw odkurzanie, potem mop' }],
+  ['power', 'Moc', { auto: 'Auto', boost: 'Boost', quiet: 'Cicho', quick: 'Szybko', Auto: 'Auto', Boost: 'Boost', Quiet: 'Cicho', Quick: 'Szybko' }],
+  ['water', 'Woda (mop)', { very_low: 'Bardzo mało', low: 'Mało', medium: 'Średnio', high: 'Dużo', 'Very Low': 'Bardzo mało', Low: 'Mało', Medium: 'Średnio', High: 'Dużo' }],
+  ['wash', 'Powtórzenia', { '1x': '1 raz', '2x': '2 razy', 'One Pass': '1 przejście', 'Two Passes': '2 przejścia' }]
 ];
 const MODE_SHORT: Record<string, string> = { vacuum_only: 'odkurzanie', vacuum_and_mop: 'odkurz. + mop', mop_only: 'mop', vacuum_then_mop: 'odkurz. → mop' };
 /** icons of a cleaning mode: vacuum and / or mop */
-const ModeIcons: FC<{ m?: string }> = ({ m }) => !m || !MODE_SHORT[m] ? null : (
+const ModeIcons: FC<{ m?: string }> = ({ m: raw }) => { const m = raw && (SPOT_MODE[raw] ?? raw); return !m || !MODE_SHORT[m] ? null : (
   <span className="rb-mi" title={MODE_SHORT[m]}>
     {m !== 'mop_only' && <Icon name="mdi:vacuum-outline" size={14} />}
     {m === 'vacuum_then_mop' && <i>→</i>}
     {m !== 'vacuum_only' && <Icon name="mdi:water-outline" size={14} />}
     <small>{MODE_SHORT[m]}</small>
   </span>
-);
+); };
 const valid = (x?: HassState) => !!x && !['unknown', 'unavailable', 'none', ''].includes(String(x.state).toLowerCase());
 const hhmm = (iso: string) => { const d = new Date(iso); return isNaN(+d) || d.getTime() < Date.now() ? '' : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); };
 const statusPl = (v: unknown) => { const t = String(v ?? '').trim(); return STATUS_PL[t.toLowerCase().replace(/_/g, ' ')] ?? t; };
@@ -69,7 +80,7 @@ const batIcon = (b: number, charging: boolean) => charging ? 'mdi:battery-chargi
 export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w, notify }) => {
   const o = w.options ?? {};
   const s = useEntity(w.entity);
-  const [bat, err, room, dock, dockTimer] = useEntities([o.battery ?? '', o.error ?? '', o.room ?? '', o.dock ?? '', o.dockTimer ?? '']);
+  const [bat, err, room, dock, dockTimer, dryLeft] = useEntities([o.battery ?? '', o.error ?? '', o.room ?? '', o.dock ?? '', o.dockTimer ?? '', o.dryLeft ?? '']);
   const rooms: Room[] = Array.isArray(o.rooms) ? o.rooms.filter((r: any) => r && (r.name || r.id)) : [];
   const roomModes = useEntities(rooms.map((r) => r.mode ?? ''));
   const [roomCfg, setRoomCfg] = useState(false);
@@ -87,16 +98,28 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
   const charging = st === 'charging' || /charg|ładuj/i.test(String(a.status ?? '')) || bat?.attributes.charging === true;
   const battery = batteryOf(s, bat);
   const active = ACTIVE.has(st);
-  const errAttr = a.error != null && !['', 'none', 'null', '0', 'no_error', 'ok'].includes(String(a.error).toLowerCase()) ? String(a.error) : '';
+  const errRaw = a.error ?? a.fault; // ha-dyson-spot-scrub: attribute "fault"
+  const errAttr = errRaw != null && !['', 'none', 'null', '0', 'no_error', 'ok'].includes(String(errRaw).toLowerCase()) ? String(errRaw) : '';
   const errorText = st === 'error' ? String(err?.state && !['unknown', 'unavailable', 'none', ''].includes(err.state) ? err.state : errAttr || a.status || '') : '';
   const signal = signalOf(a);
   const statusText = (mower ? (st === 'paused' ? 'Wstrzymana' : st === 'idle' ? 'Gotowa' : STATE_PL[st]) : STATE_PL[st]) ?? (a.status ? String(a.status) : st);
   const sub = !errorText && a.status && String(a.status).toLowerCase() !== st ? statusPl(a.status) : '';
   const roomName = valid(room) ? String(room!.state) : '';
-  const dockText = valid(dock) ? dockPl(String(dock!.state)) + (valid(dockTimer) && hhmm(dockTimer!.state) ? ' do ' + hhmm(dockTimer!.state) : '') : '';
+  // ha-dyson-spot-scrub keeps the dock in attributes: dock_state, drying_remaining_seconds (+ the "Mop drying time remaining" sensor)
+  const spot = 'ready_to_start' in a;
+  const dockRaw = valid(dock) ? String(dock!.state) : typeof a.dock_state === 'string' && a.dock_state.toUpperCase() !== 'IDLE' ? a.dock_state : '';
+  const drying = String(a.dock_state ?? '').toUpperCase() === 'DRYING_MOP';
+  const left = valid(dryLeft) && isFinite(Number(dryLeft!.state)) ? Number(dryLeft!.state) : drying && isFinite(Number(a.drying_remaining_seconds)) ? Number(a.drying_remaining_seconds) : NaN;
+  const dockText = dockRaw ? dockPl(dockRaw) + (valid(dockTimer) && hhmm(dockTimer!.state) ? ' do ' + hhmm(dockTimer!.state) : isFinite(left) && left > 0 ? ' · zostało ' + dur(left) : '') : '';
+  const blocked = spot && a.ready_to_start === false && st !== 'paused' && !ACTIVE.has(st) ? String(a.start_block_reason ?? '') : '';
+  const blockText = blocked && blocked !== 'cleaning_job_active' ? BLOCK_PL[blocked] ?? blocked.replace(/_/g, ' ') : '';
   const cleanRooms = async () => {
     navigator.vibrate?.(10);
-    try { await api.post('robot/zone', { entity: s.entity_id, zones: pick.map((id) => rooms.find((r) => (r.id || r.name) === id)?.name || id), mode: mode || undefined }); setPick([]); }
+    try {
+      await api.post('robot/zone', { entity: s.entity_id, zones: pick.map((id) => rooms.find((r) => (r.id || r.name) === id)?.name || id),
+        ids: pick.map((id) => rooms.find((r) => (r.id || r.name) === id)?.id || id), mode: mode || undefined });
+      setPick([]);
+    }
     catch (e: any) { notify?.(e.message); }
   };
 
@@ -131,18 +154,26 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
       </div>
       {battery != null && w.h > 3 && <div className="rb-bar"><i style={{ width: battery + '%' }} className={battery < 20 ? 'low' : ''} /></div>}
       {errorText && <div className="rb-err"><Icon name="mdi:alert-circle-outline" size={16} /> {errorText}</div>}
+      {blockText && !errorText && <small className="rb-block"><Icon name="mdi:timer-sand" size={14} /> Start niemożliwy: {blockText}</small>}
 
       <div className="rb-acts">
         {active && canPause
           ? <button className="rb-b" onClick={() => call('pause')}><Icon name="mdi:pause" size={20} />Pauza</button>
-          : <button className="rb-b primary" onClick={start} disabled={st === 'unavailable'}><Icon name="mdi:play" size={20} />{st === 'paused' ? 'Wznów' : mower ? 'Koś' : 'Sprzątaj'}</button>}
+          : <button className="rb-b primary" onClick={start} disabled={st === 'unavailable' || !!blocked}><Icon name="mdi:play" size={20} />{st === 'paused' ? 'Wznów' : mower ? 'Koś' : 'Sprzątaj'}</button>}
         {canDock && <button className="rb-b" onClick={() => call(mower ? 'dock' : 'return_to_base')} disabled={st === 'docked' || st === 'returning'}><Icon name="mdi:home-import-outline" size={20} />Do bazy</button>}
         {canStop && active && <button className="rb-b" onClick={() => call('stop')}><Icon name="stop" size={20} />Stop</button>}
+        {spot && drying && !active && <button className="rb-b rb-dry" onClick={() => { navigator.vibrate?.(10); hass.call('dyson_spot_scrub', 'cancel_drying', {}, s.entity_id).catch((e: Error) => notify?.(e.message)); }} title="Przerwij suszenie mopa" aria-label="Przerwij suszenie mopa"><Icon name="mdi:fan-off" size={20} /><span>Nie susz</span></button>}
         {o.coverage && <button className="rb-b ghost" onClick={() => setMap(true)} aria-label="Mapa sprzątania" title="Mapa sprzątania"><Icon name="mdi:map-outline" size={20} /></button>}
         {!mower && isFinite(f) && has(VAC.LOCATE) && w.w >= 5 && <button className="rb-b ghost" onClick={() => call('locate')} aria-label="Znajdź odkurzacz"><Icon name="mdi:map-marker-radius-outline" size={20} /></button>}
       </div>
 
-      {fanList.length > 0 && w.h > 3 && (
+      {fanList.length > 0 && w.h > 3 && spot && (
+        <label className="rb-fansel"><span>Sprzątanie całego domu:</span>
+          <select className="rb-mode" value={String(a.fan_speed ?? '')} onChange={(e) => call('set_fan_speed', { fan_speed: e.target.value })} aria-label="Tryb sprzątania całego domu">
+            {fanList.map((x) => <option key={x} value={x}>{FAN_PL[x] ?? x}</option>)}
+          </select></label>
+      )}
+      {fanList.length > 0 && w.h > 3 && !spot && (
         <div className="rb-fan" role="group" aria-label="Moc ssania">
           {fanList.map((x) => <button key={x} aria-pressed={a.fan_speed === x} onClick={() => call('set_fan_speed', { fan_speed: x })}>{x}</button>)}
         </div>
@@ -169,7 +200,7 @@ export const RobotWidget: FC<{ w: WidgetDef; notify?(m: string): void }> = ({ w,
           </div>
           {pick.length > 0 && <div className="rb-go">
             <select className="rb-mode" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Tryb sprzątania">{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <button className="rb-b primary" onClick={cleanRooms} disabled={active}><Icon name="mdi:broom" size={18} />Sprzątaj ({pick.length})</button>
+            <button className="rb-b primary" onClick={cleanRooms} disabled={active || !!blocked}><Icon name="mdi:broom" size={18} />Sprzątaj ({pick.length})</button>
           </div>}
         </div>
       )}
@@ -207,7 +238,7 @@ const RoomSettings: FC<{ rooms: Room[]; busy: boolean; title: string; onClose():
                 const x = st[ri * ROOM_SET.length + si];
                 const options = (x?.attributes.options as string[] | undefined) ?? Object.keys(opts);
                 return (
-                  <label key={k}><span>{label}</span>
+                  <label key={k}><span>{k === 'wash' && options.some((v) => /x$/.test(v)) ? 'Mycie mopa' : label}</span>
                     <select value={x?.state ?? ''} disabled={busy || !x || x.state === 'unavailable'}
                       onChange={(e) => hass.call('select', 'select_option', { option: e.target.value }, ent).catch((er: Error) => notify?.(er.message))}>
                       {!options.includes(x?.state ?? '') && <option value={x?.state ?? ''}>—</option>}

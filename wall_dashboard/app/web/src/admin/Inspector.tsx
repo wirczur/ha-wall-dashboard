@@ -194,22 +194,32 @@ export const WidgetInspector: FC<{
           // hass-dyson (Spot+Scrub, Vis Nav): current room, dock, clean coverage image, cleaning mode, rooms from the per-room selects
           const byKey = (k: string) => d.entities.find((e) => e.key === k)?.entity_id;
           const room = byKey('robot_current_room'), dock = byKey('robot_dock_state'), dockTimer = byKey('robot_dock_timer_end'), coverage = byKey('clean_coverage') ?? byKey('dust_map'), cleanMode = byKey('spot_scrub_cleaning_mode');
-          // per-room settings selects of hass-dyson: <serial>_room_<id>_<setting>
-          const RS: Record<string, string> = { cleaning_mode: 'mode', vacuum_power: 'power', hydration: 'water', wash_repetitions: 'wash' };
+          // per-room settings selects – hass-dyson: <serial>_room_<id>_<setting>;
+          // ha-dyson-spot-scrub: <serial>_room_<name_slug>_<setting>, the map room id in the attribute room_id, names "Room <name> <Setting>"
+          const spot = d.integrations.includes('dyson_spot_scrub');
+          const byUid = (suffix: string) => d.entities.find((e) => e.uid?.endsWith(suffix))?.entity_id;
+          const RS: Record<string, string> = { cleaning_mode: 'mode', vacuum_power: 'power', hydration: 'water', wash_repetitions: 'wash', cleaning_strategy: 'power', water_level: 'water', mop_repetitions: 'wash' };
           const byRoom = new Map<string, Record<string, string>>();
           for (const e of d.entities) {
-            const m = /_room_(\d+)_(cleaning_mode|vacuum_power|hydration|wash_repetitions)$/.exec(e.uid ?? '');
+            const m = (spot ? /_room_(.+)_(cleaning_mode|cleaning_strategy|water_level|mop_repetitions)$/ : /_room_(\d+)_(cleaning_mode|vacuum_power|hydration|wash_repetitions)$/).exec(e.uid ?? '');
             if (!m) continue;
             const r = byRoom.get(m[1]) ?? { id: m[1] };
             r[RS[m[2]]] = e.entity_id;
-            if (m[2] === 'cleaning_mode' || !r.name) r.name = (e.orig ?? e.name).replace(/\s*(cleaning mode|vacuum power|hydration|wash repetitions)$/i, '').trim();
+            const rid = hass.states.get(e.entity_id)?.attributes.room_id;
+            if (spot && rid != null) r.id = String(rid);
+            if (m[2] === 'cleaning_mode' || !r.name) r.name = (e.orig ?? e.name).replace(/^room\s+/i, '').replace(/\s*(cleaning mode|vacuum power|hydration|wash repetitions|cleaning strategy|water level|clean repetitions)$/i, '').trim();
             byRoom.set(m[1], r);
           }
           const rooms = [...byRoom.values()] as { id: string; name: string }[];
-          const own = [main, battery, error, room, dock, dockTimer, coverage, cleanMode];
-          const extras = d.entities.filter((e) => !e.category && !own.includes(e.entity_id) && /^(button|select|number|switch|sensor|binary_sensor|input_button)\./.test(e.entity_id)).map((e) => e.entity_id).slice(0, 12);
+          const coverageX = coverage ?? (spot ? byUid('_floor_map') : undefined);
+          const cleanModeX = cleanMode ?? (spot ? byUid('_cleaning_mode') : undefined);
+          const dryLeft = spot ? byUid('_drying_remaining') : undefined;
+          const own = [main, battery, error, room, dock, dockTimer, coverageX, cleanModeX, dryLeft];
+          // the spot+scrub room switches / selects live in the rooms list, not as extra rows
+          const roomEnt = (e: DevInfo['entities'][number]) => spot && /_room_|_start_button$/.test(e.uid ?? ''); // "Vacuum Start" uses the room switches – the tile has its own
+          const extras = d.entities.filter((e) => !e.category && !own.includes(e.entity_id) && !roomEnt(e) && /^(button|select|number|switch|sensor|binary_sensor|input_button)\./.test(e.entity_id)).map((e) => e.entity_id).slice(0, 12);
           set({ entity: main, title: w.title || d.name, icon: w.icon || (main.startsWith('lawn_mower.') ? 'mdi:robot-mower' : 'mdi:robot-vacuum'),
-            options: clean({ ...o, battery, error, extras, room, dock, dockTimer, coverage, cleanMode, rooms: rooms.length ? rooms : o.rooms }) });
+            options: clean({ ...o, battery, error, extras, room, dock, dockTimer, dryLeft, coverage: coverageX, cleanMode: cleanModeX, rooms: rooms.length ? rooms : o.rooms }) });
         }} />}
         {w.type === 'robot' && <>
           <EntityF label="Kosiarka / odkurzacz" value={w.entity} domains={['lawn_mower', 'vacuum']} onChange={(v) => set({ entity: v })} />
@@ -220,11 +230,12 @@ export const WidgetInspector: FC<{
             <EntityF label="Aktualny pokój (sensor)" value={o.room} domains={['sensor']} onChange={(v) => opt('room', v)} hint="hass-dyson: „Current room” – pokazywany przy stanie" />
             <EntityF label="Stacja dokująca (sensor)" value={o.dock} domains={['sensor']} onChange={(v) => opt('dock', v)} hint="np. suszenie mopa" />
             <EntityF label="Koniec pracy stacji (sensor czasu)" value={o.dockTimer} domains={['sensor']} onChange={(v) => opt('dockTimer', v)} />
+            <EntityF label="Czas suszenia mopa (sensor, sekundy)" value={o.dryLeft} domains={['sensor']} onChange={(v) => opt('dryLeft', v)} hint="ha-dyson-spot-scrub: „Mop drying time remaining”" />
             <EntityF label="Mapa / pokrycie sprzątania (image)" value={o.coverage} domains={['image', 'camera']} onChange={(v) => opt('coverage', v)} hint="Przycisk „Mapa” w kafelku" />
             <EntityF label="Tryb sprzątania (select)" value={o.cleanMode} domains={['select']} onChange={(v) => opt('cleanMode', v)} hint="Spot+Scrub: odkurzanie / mop" />
             <RoomsF value={o.rooms} onChange={(v) => opt('rooms', v)} />
           </>}
-          <p className="muted small">Kosiarki: domena lawn_mower (Segway Navimow, Husqvarna, Worx…). Odkurzacze: domena vacuum (Dyson 360 / Vis Nav przez hass-dyson, Roborock…).</p>
+          <p className="muted small">Kosiarki: domena lawn_mower (Segway Navimow, Husqvarna, Worx…). Odkurzacze: domena vacuum (Dyson 360 / Vis Nav przez hass-dyson, Dyson Spot+Scrub / R2 Nurovi przez ha-dyson-spot-scrub, Roborock…).</p>
         </>}
         {w.type === 'device' && <DeviceDiscover label="Wybierz urządzenie" onPick={(d) => set({ title: w.title || d.name, options: { ...o, device: d.id, entities: d.entities.filter((e) => !e.category).map((e) => e.entity_id) } })} />}
         {w.type === 'device' && <SelectF label="Wygląd" value={o.layout ?? 'auto'} onChange={(v) => opt('layout', v === 'auto' ? undefined : v)}
@@ -787,7 +798,7 @@ const RoomsF: FC<{ value?: { id: string; name: string; label?: string; mode?: st
           </div>
         ))}
         <button className="btn" onClick={() => onChange([...value, { id: '', name: '' }])}>+ Pokój</button>
-        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson (Spot+Scrub) razem z ich ustawieniami (⚙ – tryb, moc, woda, mycie; w kafelku przycisk z zębatką). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. Druga kolumna to nazwa w kafelku (np. „Salon” zamiast „Living room2”) – pierwsza musi zostać jak w MyDyson. W kafelku: wybierz pokoje → „Sprzątaj”.</small>
+        <small>„Wykryj urządzenie” uzupełnia pokoje z hass-dyson lub ha-dyson-spot-scrub (Spot+Scrub; tam pierwsza kolumna to id pokoju z mapy) razem z ich ustawieniami (⚙ – tryb, moc, woda, mycie; w kafelku przycisk z zębatką). Dla Vis Nav wpisz nazwy pokoi z aplikacji MyDyson. Druga kolumna to nazwa w kafelku (np. „Salon” zamiast „Living room2”) – pierwsza musi zostać jak w MyDyson. W kafelku: wybierz pokoje → „Sprzątaj”.</small>
       </div>
     </div>
   );

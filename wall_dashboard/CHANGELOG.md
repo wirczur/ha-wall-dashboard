@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.4
+- Robot: obsługa integracji **ha-dyson-spot-scrub** (UNsync3D – Dyson Spot+Scrub AI i R2 Nurovi). „Wykryj urządzenie” uzupełnia baterię, mapę (kamera Floor Map), czas suszenia mopa i pokoje z ich ustawieniami (tryb, strategia, woda, powtórzenia).
+- Sprzątanie wybranych pokoi przez `dyson_spot_scrub.start_rooms_with_settings` (po id pokoi z mapy). Tryb wybrany w kafelku zapisuje się jako tryb tych pokoi, tak jak w samej integracji.
+- Stan stacji z atrybutów odkurzacza (np. „suszy mop · zostało 2 h 9 min”) i przycisk **Nie susz** (`dyson_spot_scrub.cancel_drying`, jedyna usługa tej integracji dozwolona z kiosku).
+- Gdy robot nie może zacząć (stacja pierze mop, opróżnia pojemnik, brak połączenia…), Sprzątaj jest wyłączone, a kafelek mówi dlaczego. Błąd robota z atrybutu `fault`.
+- Tryb sprzątania całego domu jako lista po polsku zamiast pięciu przycisków po angielsku.
+- Robot: w niskim kafelku pokoje mają pierwszeństwo przed dodatkowymi encjami (te się przewijają), przyciski akcji zawijają się w wąskim kafelku.
+
 ## 1.4.3
 - Kamera na pełnym ekranie: **Zamknij** i **Wypełnij** przeniesione na dół (na iPhonie góra ekranu jest pod paskiem stanu / wycięciem), odstępy od krawędzi z bezpiecznych obszarów ekranu (notch, pasek gestów), mniejszy pad sterowania na telefonie.
 
